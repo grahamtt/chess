@@ -32,7 +32,7 @@ class ChessGame:
         try:
             self._board.set_fen(fen)
             return True
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             return False
 
     def can_undo(self) -> bool:
