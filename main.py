@@ -46,12 +46,12 @@ def main(page: ft.Page):
     black_player = "human"
     bot_vs_bot_running = False
     player_bots: dict[str, ChessBot] = {
-        "random": SimpleBot(),
-        "botbot": BotBot(),
-        "minimax_1": MinimaxBot(depth=1),
-        "minimax_2": MinimaxBot(depth=2),
-        "minimax_3": MinimaxBot(depth=3),
-        "minimax_4": MinimaxBot(depth=4),
+        "random": SimpleBot(randomness=1.0),  # Fully random
+        "botbot": BotBot(randomness=0.5),  # Moderate randomness
+        "minimax_1": MinimaxBot(depth=1, randomness=0.3),
+        "minimax_2": MinimaxBot(depth=2, randomness=0.3),
+        "minimax_3": MinimaxBot(depth=3, randomness=0.3),
+        "minimax_4": MinimaxBot(depth=4, randomness=0.3),
     }
 
     def get_bot_for_turn() -> ChessBot | None:

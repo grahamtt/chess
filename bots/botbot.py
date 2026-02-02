@@ -4,6 +4,8 @@ Designed to hold its own against intermediate human players without multi-ply se
 Uses: mate-in-one, winning/safe captures, checks, then best position by evaluation.
 """
 
+import random
+
 import chess
 
 from bots.minimax import evaluate
@@ -80,7 +82,18 @@ class BotBot:
     Avoids moves that hang a piece when a safe alternative exists.
     """
 
-    name = "BotBot"
+    def __init__(self, randomness: float = 0.5, random_seed: int | None = None) -> None:
+        """
+        Initialize BotBot.
+
+        Args:
+            randomness: Factor from 0.0 (deterministic) to 1.0 (fully random).
+                       When 0.0, always picks first move among equally good options.
+            random_seed: Optional seed for random number generator (for deterministic tests).
+        """
+        self.randomness = max(0.0, min(1.0, randomness))
+        self._rng = random.Random(random_seed) if random_seed is not None else random
+        self.name = "BotBot"
 
     def choose_move(self, board: chess.Board) -> chess.Move | None:
         legal = list(board.legal_moves)
@@ -107,7 +120,9 @@ class BotBot:
             captures.sort(key=lambda x: -x[0])  # best capture first
             best_gain = captures[0][0]
             best_caps = [m for g, m in captures if g == best_gain]
-            return best_caps[0]  # could random.choice for variety
+            if self.randomness > 0 and len(best_caps) > 1:
+                return self._rng.choice(best_caps)
+            return best_caps[0]
 
         # 3) Moves that give check (tactical pressure)
         checks = [m for m in legal if board.gives_check(m)]
@@ -115,27 +130,35 @@ class BotBot:
         if safe_checks:
             # Pick best check by one-ply score
             best_score = -1_000_000
-            best_move = safe_checks[0]
+            best_moves = []
             for move in safe_checks:
                 board.push(move)
                 score = -evaluate(board)  # opponent's perspective -> ours
                 board.pop()
                 if score > best_score:
                     best_score = score
-                    best_move = move
-            return best_move
+                    best_moves = [move]
+                elif score == best_score:
+                    best_moves.append(move)
+            if self.randomness > 0 and len(best_moves) > 1:
+                return self._rng.choice(best_moves)
+            return best_moves[0]
         if checks:
             # All checks hang something; still prefer checks that hang less
             best_score = -1_000_000
-            best_move = checks[0]
+            best_moves = []
             for move in checks:
                 board.push(move)
                 score = -evaluate(board)
                 board.pop()
                 if score > best_score:
                     best_score = score
-                    best_move = move
-            return best_move
+                    best_moves = [move]
+                elif score == best_score:
+                    best_moves.append(move)
+            if self.randomness > 0 and len(best_moves) > 1:
+                return self._rng.choice(best_moves)
+            return best_moves[0]
 
         # 4) One-ply greedy: pick move that gives best evaluation after our move
         # Filter out moves that hang a piece if we have a safe alternative
@@ -147,7 +170,11 @@ class BotBot:
             hangs = _move_hangs_piece(board, move)
             scored.append((score, hangs, move))
         # Prefer safe moves; among those, prefer higher score
-        scored.sort(
-            key=lambda x: (x[1], -x[0])
-        )  # False (safe) before True (hangs), then higher score
-        return scored[0][2]
+        scored.sort(key=lambda x: (x[1], -x[0]))  # False (safe) before True (hangs), then higher score
+        # Find all moves with the same (hangs, score) as the best
+        best_hangs = scored[0][1]
+        best_score = scored[0][0]
+        best_moves = [m for s, h, m in scored if h == best_hangs and s == best_score]
+        if self.randomness > 0 and len(best_moves) > 1:
+            return self._rng.choice(best_moves)
+        return best_moves[0]

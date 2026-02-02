@@ -10,7 +10,18 @@ import chess
 class SimpleBot:
     """Rules-based bot: prefer captures and checks, otherwise random."""
 
-    name = "Simple Bot"
+    def __init__(self, randomness: float = 1.0, random_seed: int | None = None) -> None:
+        """
+        Initialize SimpleBot.
+
+        Args:
+            randomness: Factor from 0.0 (deterministic) to 1.0 (fully random).
+                       When 0.0, always picks first move in list.
+            random_seed: Optional seed for random number generator (for deterministic tests).
+        """
+        self.randomness = max(0.0, min(1.0, randomness))
+        self._rng = random.Random(random_seed) if random_seed is not None else random
+        self.name = "Simple Bot"
 
     def choose_move(self, board: chess.Board) -> chess.Move | None:
         legal = list(board.legal_moves)
@@ -21,12 +32,17 @@ class SimpleBot:
         captures = [m for m in legal if board.is_capture(m)]
         if captures:
             # Prefer higher-value captures (simple: more pieces attacked)
-            random.shuffle(captures)
+            if self.randomness > 0:
+                self._rng.shuffle(captures)
             return captures[0]
 
         # Prefer moves that give check
         checks = [m for m in legal if board.gives_check(m)]
         if checks:
-            return random.choice(checks)
+            if self.randomness > 0:
+                return self._rng.choice(checks)
+            return checks[0]
 
-        return random.choice(legal)
+        if self.randomness > 0:
+            return self._rng.choice(legal)
+        return legal[0]

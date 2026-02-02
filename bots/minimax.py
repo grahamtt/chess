@@ -3,6 +3,8 @@ Minimax bot with configurable search depth and alpha-beta pruning.
 Uses material + positional scoring (center control, mobility, piece-square).
 """
 
+import random
+
 import chess
 
 
@@ -133,45 +135,67 @@ def negamax(
     depth: int,
     alpha: int,
     beta: int,
+    randomness: float = 0.0,
+    rng: random.Random | None = None,
 ) -> tuple[int, chess.Move | None]:
     """
     Negamax with alpha-beta pruning. Returns (score, best_move).
     Score is from current side to move's perspective.
+    
+    Args:
+        randomness: If > 0 and multiple moves have the same best score, randomly choose among them.
+        rng: Random number generator to use (for deterministic tests).
     """
     if depth == 0 or board.is_game_over():
         return evaluate(board), None
 
-    best_move: chess.Move | None = None
+    best_moves: list[chess.Move] = []
     best_score = -1_000_000
 
     for move in board.legal_moves:
         board.push(move)
-        child_score, _ = negamax(board, depth - 1, -beta, -alpha)
+        child_score, _ = negamax(board, depth - 1, -beta, -alpha, randomness, rng)
         board.pop()
         score = -child_score  # our score from this move
 
         if score > best_score:
             best_score = score
-            best_move = move
+            best_moves = [move]
+        elif randomness > 0 and score == best_score:
+            best_moves.append(move)
         alpha = max(alpha, score)
         if alpha >= beta:
             break
 
-    return best_score, best_move
+    if randomness > 0 and len(best_moves) > 1 and rng is not None:
+        return best_score, rng.choice(best_moves)
+    return best_score, best_moves[0] if best_moves else None
 
 
 class MinimaxBot:
     """Minimax bot with configurable search depth (alpha-beta pruning)."""
 
-    def __init__(self, depth: int = 3) -> None:
+    def __init__(self, depth: int = 3, randomness: float = 0.3, random_seed: int | None = None) -> None:
+        """
+        Initialize MinimaxBot.
+
+        Args:
+            depth: Search depth (minimum 1).
+            randomness: Factor from 0.0 (deterministic) to 1.0 (fully random).
+                       When 0.0, always picks first move among equally scored moves.
+            random_seed: Optional seed for random number generator (for deterministic tests).
+        """
         if depth < 1:
             depth = 1
         self.depth = depth
+        self.randomness = max(0.0, min(1.0, randomness))
+        self._rng = random.Random(random_seed) if random_seed is not None else random
         self.name = f"Minimax (depth {depth})"
 
     def choose_move(self, board: chess.Board) -> chess.Move | None:
         legal = list(board.legal_moves)
         if not legal:
             return None
-        _, best = negamax(board.copy(), self.depth, -1_000_000, 1_000_000)
+        rng = self._rng if self.randomness > 0 else None
+        _, best = negamax(board.copy(), self.depth, -1_000_000, 1_000_000, self.randomness, rng)
         return best
