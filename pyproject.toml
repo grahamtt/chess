@@ -1,0 +1,10 @@
+[project]
+name = "flet-chess"
+version = "0.1.0"
+description = "A two-player chess game built with Flet and custom SVG pieces."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "flet[all]>=0.27.0",
+    "python-chess>=1.999",
+]
