@@ -27,6 +27,14 @@ class ChessGame:
     def reset(self) -> None:
         self._board.reset()
 
+    def set_fen(self, fen: str) -> bool:
+        """Load position from FEN. Returns True if FEN was valid."""
+        try:
+            self._board.set_fen(fen)
+            return True
+        except (ValueError, TypeError):
+            return False
+
     def can_undo(self) -> bool:
         """True if there is at least one move to take back."""
         return len(self._board.move_stack) > 0
@@ -78,24 +86,50 @@ class ChessGame:
         self._board.push(move)
         return True
 
+    def get_board(self) -> chess.Board:
+        """Return a copy of the current board (for bots; do not mutate)."""
+        return self._board.copy()
+
+    def apply_move(self, move: chess.Move) -> bool:
+        """Apply a move from a bot. Return True if applied."""
+        if move not in self._board.legal_moves:
+            return False
+        self._board.push(move)
+        return True
+
     def is_checkmate(self) -> bool:
         return self._board.is_checkmate()
 
     def is_stalemate(self) -> bool:
         return self._board.is_stalemate()
 
+    def is_only_kings_left(self) -> bool:
+        """True if only the two kings remain (draw by insufficient material)."""
+        piece_map = self._board.piece_map()
+        if len(piece_map) != 2:
+            return False
+        return all(p.piece_type == chess.KING for p in piece_map.values())
+
     def is_in_check(self) -> bool:
         return self._board.is_check()
 
     def get_move_history(self) -> str:
-        """Return move history as SAN text, e.g. '1. e4 e5 2. Nf3 Nc6'."""
+        """Return move history as SAN text, e.g. '1. e4 e5 2. Nf3 Nc6'.
+        Works even when the position was loaded from FEN (moves are in context of the position before each move).
+        """
         if not self._board.move_stack:
             return ""
-        temp = chess.Board()
         sans: list[str] = []
-        for move in self._board.move_stack:
-            sans.append(temp.san(move))
-            temp.push(move)
+        stack = self._board.move_stack
+        for i, move in enumerate(stack):
+            # Position before this move: copy board and pop (len - i) moves
+            temp = self._board.copy()
+            for _ in range(len(stack) - i):
+                temp.pop()
+            try:
+                sans.append(temp.san(move))
+            except (AssertionError, ValueError):
+                sans.append(move.uci())  # fallback if SAN fails
         lines: list[str] = []
         i = 0
         n = 1
