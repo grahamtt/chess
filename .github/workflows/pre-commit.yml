@@ -27,10 +27,8 @@ jobs:
       - name: Set up uv environment
         run: |
           mise run -- uv venv
-          source .venv/bin/activate
           mise run -- uv sync
 
       - name: Run pre-commit hooks
         run: |
-          source .venv/bin/activate
           mise run -- pre-commit run --all-files
