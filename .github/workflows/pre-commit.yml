@@ -15,21 +15,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install mise
+        uses: jdx/mise-action@v2
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          version: latest
 
-      - name: Install dependencies
+      - name: Install tools with mise
         run: |
-          python -m pip install --upgrade pip
-          pip install python-chess pytest pytest-cov pre-commit
-          # Install project in editable mode if pyproject.toml exists
-          if [ -f pyproject.toml ]; then
-            pip install -e .
-          fi
+          mise install
+
+      - name: Set up uv environment
+        run: |
+          mise run -- uv venv
+          source .venv/bin/activate
+          mise run -- uv sync
 
       - name: Run pre-commit hooks
         run: |
-          pre-commit run --all-files
+          source .venv/bin/activate
+          mise run -- pre-commit run --all-files
