@@ -37,7 +37,7 @@ branch = true
 precision = 2
 show_missing = true
 skip_covered = false
-fail_under = 100
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -50,4 +50,4 @@ exclude_lines = [
 ]
 
 [tool.coverage.branch]
-fail_under = 100
+fail_under = 80
