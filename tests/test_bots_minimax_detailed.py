@@ -12,7 +12,7 @@ def test_evaluate_fifty_moves_actual():
     # This is complex, so we'll use a position that's close
     # Actually, let's manually set the halfmove clock if possible
     # Since we can't directly set it, we test the condition exists
-    
+
     # Alternative: test with a position that can claim
     board = chess.Board("8/8/8/8/8/8/4k3/4K3 w - - 50 100")
     # This has 50 halfmoves, so can_claim_fifty_moves should be True

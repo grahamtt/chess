@@ -28,7 +28,7 @@ def test_get_svg_all_pieces():
     """Test SVG generation for all piece types."""
     pieces = ["K", "Q", "R", "B", "N", "P"]
     colors = ["white", "black"]
-    
+
     for color in colors:
         for piece in pieces:
             svg = get_svg(color, piece)

@@ -61,14 +61,14 @@ def test_chess_game_set_fen():
     # Starting position FEN
     assert game.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     assert game.turn == "white"
-    
+
     # Invalid FEN
     assert not game.set_fen("invalid fen")
     assert not game.set_fen("")
-    
+
     # Test with None (should handle gracefully)
     assert not game.set_fen(None)
-    
+
     # Test with non-string type
     assert not game.set_fen(123)
 
@@ -85,7 +85,7 @@ def test_chess_game_undo():
     """Test undo functionality."""
     game = ChessGame()
     assert not game.undo()  # No moves to undo
-    
+
     game.make_move(6, 4, 4, 4)  # e2-e4
     assert game.turn == "black"
     assert game.undo()
@@ -119,10 +119,10 @@ def test_chess_game_legal_moves_from():
     moves = game.legal_moves_from(6, 4)
     assert len(moves) > 0
     assert (4, 4) in moves  # e4
-    
+
     # Empty square should have no moves
     assert len(game.legal_moves_from(4, 4)) == 0
-    
+
     # Piece of wrong color should have no moves
     assert len(game.legal_moves_from(1, 4)) == 0  # Black pawn when white to move
 
@@ -134,10 +134,10 @@ def test_chess_game_make_move():
     assert game.make_move(6, 4, 4, 4)  # e2-e4
     assert game.turn == "black"
     assert game.piece_at(4, 4) == ("white", "P")
-    
+
     # Invalid move
     assert not game.make_move(4, 4, 3, 4)  # Can't move pawn backward
-    
+
     # Move from empty square
     assert not game.make_move(4, 0, 3, 0)
 
@@ -158,7 +158,7 @@ def test_chess_game_apply_move():
     move = chess.Move.from_uci("e2e4")
     assert game.apply_move(move)
     assert game.turn == "black"
-    
+
     # Invalid move
     invalid_move = chess.Move.from_uci("e2e5")  # Pawn can't move 3 squares from start after first move
     game.reset()
@@ -170,7 +170,7 @@ def test_chess_game_is_checkmate():
     """Test is_checkmate method."""
     game = ChessGame()
     assert not game.is_checkmate()
-    
+
     # Set up a checkmate position
     game.set_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
     assert game.is_checkmate()
@@ -180,7 +180,7 @@ def test_chess_game_is_stalemate():
     """Test is_stalemate method."""
     game = ChessGame()
     assert not game.is_stalemate()
-    
+
     # Set up a stalemate position
     game.set_fen("8/8/8/8/8/8/4k3/4K3 w - - 0 1")
     # Actually need a proper stalemate
@@ -203,11 +203,11 @@ def test_chess_game_is_only_kings_left():
     """Test is_only_kings_left method."""
     game = ChessGame()
     assert not game.is_only_kings_left()
-    
+
     # Set up position with only kings
     game.set_fen("8/8/8/8/8/8/4k3/4K3 w - - 0 1")
     assert game.is_only_kings_left()
-    
+
     # Position with more pieces
     game.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     assert not game.is_only_kings_left()
@@ -217,7 +217,7 @@ def test_chess_game_is_in_check():
     """Test is_in_check method."""
     game = ChessGame()
     assert not game.is_in_check()
-    
+
     # Set up a check position
     game.set_fen("rnbqkbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
     assert game.is_in_check()
@@ -227,11 +227,11 @@ def test_chess_game_get_move_history():
     """Test get_move_history method."""
     game = ChessGame()
     assert game.get_move_history() == ""
-    
+
     game.make_move(6, 4, 4, 4)  # e2-e4
     history = game.get_move_history()
     assert "e4" in history or "e2e4" in history
-    
+
     game.make_move(1, 4, 3, 4)  # e7-e5
     history = game.get_move_history()
     assert len(history) > 0

@@ -68,7 +68,7 @@ def test_botbot_safe_checks_no_mate():
     # Need to find such a position
     # Let's try: position where we have checks but not mate
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
-    
+
     # Verify no mate in one
     legal = list(board.legal_moves)
     has_mate = False
@@ -79,7 +79,7 @@ def test_botbot_safe_checks_no_mate():
             board.pop()
             break
         board.pop()
-    
+
     if not has_mate:
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
@@ -96,7 +96,7 @@ def test_botbot_unsafe_checks_no_mate():
     # Need position with checks but all hang, and no mate
     # This is position-dependent
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
-    
+
     legal = list(board.legal_moves)
     # Check for mate
     has_mate = any(
@@ -106,7 +106,7 @@ def test_botbot_unsafe_checks_no_mate():
         (board.push(m), board.is_checkmate(), board.pop())[2] if board.is_checkmate() else False
         for m in legal
     )
-    
+
     # Simpler check
     has_mate = False
     for move in legal:
@@ -116,12 +116,12 @@ def test_botbot_unsafe_checks_no_mate():
             board.pop()
             break
         board.pop()
-    
+
     if not has_mate:
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
         unsafe_checks = [m for m in checks if _move_hangs_piece(board, m)]
-        
+
         # If we have unsafe checks and no safe checks, test that path
         if unsafe_checks and not safe_checks and len(unsafe_checks) > 1:
             move = bot.choose_move(board)

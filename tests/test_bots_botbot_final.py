@@ -36,7 +36,7 @@ def test_botbot_winning_captures():
     bot = BotBot()
     # Position with winning capture (ex >= 0)
     board = chess.Board("rnbqkbnr/ppp2ppp/8/3pp3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3")
-    
+
     # Verify we have winning captures
     winning = []
     for move in board.legal_moves:
@@ -44,10 +44,10 @@ def test_botbot_winning_captures():
             ex = _exchange_result(board, move)
             if ex is not None and ex >= 0:
                 winning.append((ex, move))
-    
+
     # This position should have winning captures
     assert len(winning) > 0, "Need winning captures to test this path"
-    
+
     # Bot should choose from winning captures (hits lines 100-107)
     move = bot.choose_move(board)
     assert move is not None
@@ -62,11 +62,11 @@ def test_botbot_safe_checks_with_multiple():
     bot = BotBot()
     # Position with multiple safe checks
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
-    
+
     # Ensure we have safe checks
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-    
+
     if len(safe_checks) > 1:  # Need multiple to test the loop
         move = bot.choose_move(board)
         # Should execute scoring loop (lines 116-122)
@@ -80,11 +80,11 @@ def test_botbot_unsafe_checks_with_multiple():
     # We need a position where all checks hang pieces
     # This is position-dependent, so we test what we can
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
-    
+
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
     unsafe_checks = [m for m in checks if _move_hangs_piece(board, m)]
-    
+
     # If we have unsafe checks and no safe checks, test that path
     if unsafe_checks and not safe_checks and len(unsafe_checks) > 1:
         move = bot.choose_move(board)

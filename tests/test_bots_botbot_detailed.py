@@ -63,7 +63,7 @@ def test_botbot_captures_path_detailed():
             ex = _exchange_result(board, move)
             if ex is not None and ex >= 0:
                 captures_with_gain.append((ex, move))
-    
+
     if captures_with_gain:
         move = bot.choose_move(board)
         # Should prefer one of the winning captures (or mate if available)
@@ -78,7 +78,7 @@ def test_botbot_safe_checks_detailed():
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-    
+
     if safe_checks:
         move = bot.choose_move(board)
         # Should be in safe_checks or be a mate
@@ -95,7 +95,7 @@ def test_botbot_unsafe_checks_detailed():
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-    
+
     # If there are checks but no safe checks, test that path
     if checks and not safe_checks:
         move = bot.choose_move(board)

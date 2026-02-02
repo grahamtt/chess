@@ -19,7 +19,7 @@ def test_puzzles_structure():
 def test_puzzles_have_valid_fen():
     """Test that all puzzles have valid FEN strings."""
     import chess
-    
+
     for puzzle in PUZZLES:
         name, fen, _, _ = puzzle
         try:
@@ -34,7 +34,7 @@ def test_puzzles_clock_settings():
     # Most puzzles should have clock disabled
     clock_disabled_count = sum(1 for _, _, _, clock_enabled in PUZZLES if not clock_enabled)
     assert clock_disabled_count > 0
-    
+
     # At least one puzzle should have clock enabled (starting position)
     clock_enabled_count = sum(1 for _, _, _, clock_enabled in PUZZLES if clock_enabled)
     assert clock_enabled_count >= 1

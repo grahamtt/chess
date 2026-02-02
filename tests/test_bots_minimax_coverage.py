@@ -15,7 +15,7 @@ def test_evaluate_fifty_moves_path():
     # For testing, we'll just verify the function handles it
     score = evaluate(board)
     assert isinstance(score, int)
-    
+
     # Try to create a position closer to 50 moves
     # This is complex, so we'll test that the code path exists
     if board.can_claim_fifty_moves():

@@ -25,7 +25,7 @@ def test_exchange_result_all_branches():
 def test_move_hangs_piece_all_branches():
     """Test _move_hangs_piece to hit all branches."""
     board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-    
+
     # Test various moves to hit different branches
     for move in list(board.legal_moves)[:10]:
         hangs = _move_hangs_piece(board, move)
@@ -55,7 +55,7 @@ def test_botbot_choose_move_captures_with_sorting():
     bot = BotBot()
     # Position where we need to test the sorting logic
     board = chess.Board("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2")
-    
+
     # Manually check captures
     legal = list(board.legal_moves)
     captures = []
@@ -64,7 +64,7 @@ def test_botbot_choose_move_captures_with_sorting():
             ex = _exchange_result(board, move)
             if ex is not None and ex >= 0:
                 captures.append((ex, move))
-    
+
     if captures:
         # Test that the bot uses this path
         move = bot.choose_move(board)
@@ -76,11 +76,11 @@ def test_botbot_choose_move_safe_checks_scoring():
     """Test BotBot safe checks with scoring loop (lines 111-123)."""
     bot = BotBot()
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
-    
+
     legal = list(board.legal_moves)
     checks = [m for m in legal if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-    
+
     if safe_checks:
         move = bot.choose_move(board)
         # Should execute scoring loop (lines 116-122)
@@ -93,11 +93,11 @@ def test_botbot_choose_move_unsafe_checks_scoring():
     bot = BotBot()
     # Need position where checks exist but all hang
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
-    
+
     legal = list(board.legal_moves)
     checks = [m for m in legal if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-    
+
     # If we have checks but no safe checks, test that path
     if checks and not safe_checks:
         move = bot.choose_move(board)

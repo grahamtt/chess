@@ -12,7 +12,7 @@ def test_botbot_safe_checks_path_forced():
     bot = BotBot()
     # Position with safe checks but no mate
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
-    
+
     legal = list(board.legal_moves)
     # Verify no mate
     has_mate = any(
@@ -28,7 +28,7 @@ def test_botbot_safe_checks_path_forced():
             board.pop()
             break
         board.pop()
-    
+
     if not has_mate:
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
@@ -43,7 +43,7 @@ def test_botbot_unsafe_checks_path_forced():
     bot = BotBot()
     # This is harder - need checks but all hang
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
-    
+
     legal = list(board.legal_moves)
     has_mate = False
     for move in legal:
@@ -53,12 +53,12 @@ def test_botbot_unsafe_checks_path_forced():
             board.pop()
             break
         board.pop()
-    
+
     if not has_mate:
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
         unsafe_checks = [m for m in checks if _move_hangs_piece(board, m)]
-        
+
         # If we have unsafe checks and no safe checks
         if unsafe_checks and not safe_checks and len(unsafe_checks) > 1:
             move = bot.choose_move(board)
@@ -84,7 +84,7 @@ def test_simple_bot_checks_branch():
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
     captures = [m for m in board.legal_moves if board.is_capture(m)]
     checks = [m for m in board.legal_moves if board.gives_check(m)]
-    
+
     if checks and not captures:
         move = bot.choose_move(board)
         assert move is not None
@@ -97,11 +97,11 @@ def test_chess_logic_get_move_history_exception():
     # Make moves
     game.make_move(6, 4, 4, 4)  # e2-e4
     game.make_move(1, 4, 3, 4)  # e7-e5
-    
+
     # The exception is hard to trigger, but we test the method works
     history = game.get_move_history()
     assert isinstance(history, str)
-    
+
     # Try to create edge case - load from FEN and make moves
     game2 = ChessGame()
     game2.set_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")

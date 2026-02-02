@@ -16,7 +16,7 @@ def test_minimax_bot_init():
     bot = MinimaxBot(depth=3)
     assert bot.depth == 3
     assert bot.name == "Minimax (depth 3)"
-    
+
     bot2 = MinimaxBot(depth=5)
     assert bot2.depth == 5
     assert bot2.name == "Minimax (depth 5)"
@@ -27,7 +27,7 @@ def test_minimax_bot_init_minimum_depth():
     bot = MinimaxBot(depth=0)
     assert bot.depth == 1
     assert bot.name == "Minimax (depth 1)"
-    
+
     bot2 = MinimaxBot(depth=-5)
     assert bot2.depth == 1
 
@@ -108,15 +108,15 @@ def test_pawn_advancement_bonus():
     # White pawn on rank 2 (index 1)
     bonus_white_rank2 = _pawn_advancement_bonus(chess.A2, chess.WHITE)
     assert bonus_white_rank2 == 0  # rank 1 = 0
-    
+
     # White pawn on rank 7 (index 6)
     bonus_white_rank7 = _pawn_advancement_bonus(chess.A7, chess.WHITE)
     assert bonus_white_rank7 == 5  # rank 6 = 5
-    
+
     # Black pawn on rank 7 (index 6)
     bonus_black_rank7 = _pawn_advancement_bonus(chess.A7, chess.BLACK)
     assert bonus_black_rank7 == 0  # rank 6 from black's perspective = 0
-    
+
     # Black pawn on rank 2 (index 1)
     bonus_black_rank2 = _pawn_advancement_bonus(chess.A2, chess.BLACK)
     assert bonus_black_rank2 == 5  # rank 1 from black's perspective = 5
@@ -160,11 +160,11 @@ def test_evaluate_mobility():
     """Test that evaluate includes mobility bonus."""
     board1 = chess.Board()
     score1 = evaluate(board1)
-    
+
     # Position with fewer moves should score lower
     board2 = chess.Board("8/8/8/8/8/8/8/4k3 w - - 0 1")
     score2 = evaluate(board2)
-    
+
     # Starting position should have more mobility
     assert score1 > score2 or board2.is_game_over()
 
