@@ -206,9 +206,10 @@ def main(page: ft.Page):
         cell = game.piece_at(row, col)
         bg = square_color(row, col)
         
-        # Check if this square is part of a hint
-        is_hint_from = any((row, col) == hint_from for hint_from, _, _, _ in hint_moves)
-        is_hint_to = any((row, col) == hint_to for _, hint_to, _, _ in hint_moves)
+        # Only show hints during human turns
+        show_hints = is_human_turn() and hint_moves
+        is_hint_from = show_hints and any((row, col) == hint_from for hint_from, _, _, _ in hint_moves)
+        is_hint_to = show_hints and any((row, col) == hint_to for _, hint_to, _, _ in hint_moves)
         
         if selected == (row, col):
             bg = SELECTED
@@ -241,7 +242,7 @@ def main(page: ft.Page):
         )
 
         def on_tap(e):
-            nonlocal selected, valid_moves, game_over
+            nonlocal selected, valid_moves, hint_moves, game_over
             if game_over:
                 return
             if not is_human_turn():
@@ -298,7 +299,7 @@ def main(page: ft.Page):
 
     def play_bot_turn():
         """Get one move from bot for current side to move, apply it, and refresh UI."""
-        nonlocal selected, valid_moves, game_over
+        nonlocal selected, valid_moves, hint_moves, game_over
         bot = get_bot_for_turn()
         if not bot or game_over:
             return
@@ -317,7 +318,7 @@ def main(page: ft.Page):
 
     async def run_bot_vs_bot():
         """Run bot-vs-bot loop in background so UI stays responsive."""
-        nonlocal selected, valid_moves, game_over, bot_vs_bot_running
+        nonlocal selected, valid_moves, hint_moves, game_over, bot_vs_bot_running
         if bot_vs_bot_running or game_over:
             return
         bot = get_bot_for_turn()
@@ -348,7 +349,10 @@ def main(page: ft.Page):
             bot_vs_bot_running = False
 
     def update_status():
-        nonlocal game_over
+        nonlocal game_over, hint_moves
+        # Clear hints when it's not a human's turn
+        if not is_human_turn():
+            hint_moves = []
         if game.is_checkmate():
             winner = "Black" if game.turn == "white" else "White"
             message.current.value = f"Checkmate! {winner} wins."
