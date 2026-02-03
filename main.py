@@ -16,6 +16,8 @@ DARK_SQUARE = "#b58863"
 HIGHLIGHT = "#7fc97f"
 HIGHLIGHT_CAPTURE = "#f27777"
 SELECTED = "#baca44"
+HINT_FROM = "#ffd700"  # Gold for hint source square
+HINT_TO = "#ffa500"  # Orange for hint destination square
 
 
 def main(page: ft.Page):
@@ -28,6 +30,7 @@ def main(page: ft.Page):
     game = ChessGame()
     selected = None  # (row, col) or None
     valid_moves = []  # list of (row, col)
+    hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
     game_over = False
     message = ft.Ref[ft.Text]()
     history_text = ft.Ref[ft.Text]()
@@ -202,8 +205,17 @@ def main(page: ft.Page):
     def build_square(row: int, col: int) -> ft.Container:
         cell = game.piece_at(row, col)
         bg = square_color(row, col)
+        
+        # Check if this square is part of a hint
+        is_hint_from = any((row, col) == hint_from for hint_from, _, _, _ in hint_moves)
+        is_hint_to = any((row, col) == hint_to for _, hint_to, _, _ in hint_moves)
+        
         if selected == (row, col):
             bg = SELECTED
+        elif is_hint_from:
+            bg = HINT_FROM
+        elif is_hint_to:
+            bg = HINT_TO
         elif (row, col) in valid_moves:
             bg = HIGHLIGHT_CAPTURE if cell is not None else HIGHLIGHT
 
@@ -239,6 +251,7 @@ def main(page: ft.Page):
                 game.make_move(selected[0], selected[1], row, col)
                 selected = None
                 valid_moves = []
+                hint_moves = []  # Clear hints after making a move
                 deduct_move_time_and_check_game_over()
                 update_status()
                 update_undo_button()
@@ -294,6 +307,7 @@ def main(page: ft.Page):
             return
         selected = None
         valid_moves = []
+        hint_moves = []  # Clear hints after bot move
         deduct_move_time_and_check_game_over()
         update_status()
         update_undo_button()
@@ -320,6 +334,7 @@ def main(page: ft.Page):
                     break
                 selected = None
                 valid_moves = []
+                hint_moves = []  # Clear hints after bot move
                 deduct_move_time_and_check_game_over()
                 update_status()
                 update_undo_button()
@@ -403,6 +418,7 @@ def main(page: ft.Page):
         nonlocal \
             selected, \
             valid_moves, \
+            hint_moves, \
             game_over, \
             white_remaining_secs, \
             black_remaining_secs, \
@@ -412,6 +428,7 @@ def main(page: ft.Page):
         game.reset()
         selected = None
         valid_moves = []
+        hint_moves = []
         game_over = False
         clock_enabled = True
         white_remaining_secs = float(time_control_secs)
@@ -428,11 +445,12 @@ def main(page: ft.Page):
             page.run_task(run_bot_vs_bot)
 
     def do_undo(_):
-        nonlocal selected, valid_moves, game_over, move_start_time
+        nonlocal selected, valid_moves, hint_moves, game_over, move_start_time
         if not game.undo():
             return
         selected = None
         valid_moves = []
+        hint_moves = []  # Clear hints when undoing
         game_over = False
         move_start_time = time.monotonic()
         update_status()
@@ -581,6 +599,7 @@ def main(page: ft.Page):
         nonlocal selected, valid_moves, game_over, clock_enabled
         selected = None
         valid_moves = []
+        hint_moves = []  # Clear hints when loading puzzle
         clock_enabled = puzzle_clock_enabled
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
@@ -625,6 +644,50 @@ def main(page: ft.Page):
     def show_puzzles_dialog(_):
         page.show_dialog(puzzles_dialog)
 
+    def show_hint(_):
+        """Show hint moves for the current position."""
+        nonlocal hint_moves
+        if game_over or not is_human_turn():
+            return
+        
+        # Get hint moves from the game
+        hint_data = game.get_hint_moves(depth=3, top_n=3)
+        if not hint_data:
+            message.current.value = "No hints available (game over or no moves)."
+            message.current.color = ft.Colors.ORANGE
+            page.update()
+            return
+        
+        # Convert hint moves to UI coordinates
+        import chess
+        hint_moves = []
+        for move, score, san in hint_data:
+            from_sq = move.from_square
+            to_sq = move.to_square
+            from_file = chess.square_file(from_sq)
+            from_rank = chess.square_rank(from_sq)
+            to_file = chess.square_file(to_sq)
+            to_rank = chess.square_rank(to_sq)
+            from_row, from_col = (7 - from_rank, from_file)
+            to_row, to_col = (7 - to_rank, to_file)
+            hint_moves.append(((from_row, from_col), (to_row, to_col), score, san))
+        
+        # Update message with hint info
+        if hint_moves:
+            best_move = hint_moves[0]
+            best_san = best_move[3]
+            if len(hint_moves) > 1:
+                message.current.value = f"💡 Hint: Best move is {best_san} (showing top {len(hint_moves)} moves)"
+            else:
+                message.current.value = f"💡 Hint: Best move is {best_san}"
+            message.current.color = ft.Colors.PURPLE
+        else:
+            message.current.value = "No hints available."
+            message.current.color = ft.Colors.ORANGE
+        
+        refresh_board()
+        page.update()
+
     history_panel = ft.Container(
         content=ft.Column(
             [
@@ -661,6 +724,11 @@ def main(page: ft.Page):
                 icon=ft.Icons.MENU_BOOK,
                 tooltip="Puzzles & Scenarios",
                 on_click=show_puzzles_dialog,
+            ),
+            ft.IconButton(
+                icon=ft.Icons.LIGHTBULB_OUTLINE,
+                tooltip="Show hint (best moves)",
+                on_click=show_hint,
             ),
             ft.IconButton(
                 icon=ft.Icons.SETTINGS,
