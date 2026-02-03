@@ -187,3 +187,36 @@ class ChessGame:
         # Sort by score (descending) and return top N
         scored_moves.sort(key=lambda x: x[0], reverse=True)
         return [(move, score, san) for score, move, san in scored_moves[:top_n]]
+
+    def get_position_evaluation(self, depth: int = 2) -> int:
+        """
+        Get position evaluation in centipawns from white's perspective.
+        Positive values favor white, negative values favor black.
+        
+        Args:
+            depth: Search depth for evaluation (default 2 for quick updates)
+        
+        Returns:
+            Evaluation score in centipawns (100 = 1 pawn advantage for white)
+        """
+        from bots.minimax import evaluate, negamax
+        
+        if self._board.is_game_over():
+            if self._board.is_checkmate():
+                # Checkmate: return very large negative if white is mated, positive if black is mated
+                return -100_000 if self._board.turn == chess.WHITE else 100_000
+            # Stalemate or draw
+            return 0
+        
+        # Use a quick evaluation if depth is 0, otherwise use minimax
+        if depth <= 0:
+            # Quick static evaluation from white's perspective
+            # If it's white's turn, evaluate directly; if black's turn, negate
+            score = evaluate(self._board)
+            return score if self._board.turn == chess.WHITE else -score
+        else:
+            # Use minimax for deeper evaluation
+            score, _ = negamax(self._board.copy(), depth, -1_000_000, 1_000_000, 0.0, None)
+            # Negamax returns score from side-to-move's perspective
+            # Convert to white's perspective
+            return score if self._board.turn == chess.WHITE else -score

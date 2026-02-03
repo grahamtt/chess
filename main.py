@@ -36,6 +36,8 @@ def main(page: ft.Page):
     history_text = ft.Ref[ft.Text]()
     white_clock_text = ft.Ref[ft.Text]()
     black_clock_text = ft.Ref[ft.Text]()
+    eval_bar_container = ft.Ref[ft.Container]()
+    eval_text = ft.Ref[ft.Text]()
 
     # Game clock: each player has fixed time; runs down on their turn
     time_control_secs = 300  # 5 min default; set by dropdown for next game
@@ -298,6 +300,7 @@ def main(page: ft.Page):
                 update_status()
                 update_undo_button()
                 update_history()
+                update_evaluation_bar()
                 refresh_board()
                 page.update()
                 if not game_over and not is_human_turn():
@@ -354,6 +357,7 @@ def main(page: ft.Page):
         update_status()
         update_undo_button()
         update_history()
+        update_evaluation_bar()
         refresh_board()
         page.update()
 
@@ -381,6 +385,7 @@ def main(page: ft.Page):
                 update_status()
                 update_undo_button()
                 update_history()
+                update_evaluation_bar()
                 refresh_board()
                 page.update()
                 if game_over:
@@ -492,6 +497,7 @@ def main(page: ft.Page):
         refresh_board()
         update_undo_button()
         update_history()
+        update_evaluation_bar()
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
@@ -519,6 +525,7 @@ def main(page: ft.Page):
         refresh_board()
         update_undo_button()
         update_history()
+        update_evaluation_bar()
         page.update()
 
     def update_history():
@@ -527,6 +534,79 @@ def main(page: ft.Page):
         history_text.current.value = game.get_move_history() or "No moves yet."
         try:
             history_text.current.update()
+        except RuntimeError:
+            pass  # control not on page yet
+
+    def format_evaluation(centipawns: int) -> str:
+        """Format evaluation in a human-readable way."""
+        if abs(centipawns) >= 100_000:
+            # Checkmate
+            if centipawns > 0:
+                return "M+"
+            else:
+                return "M-"
+        pawns = centipawns / 100.0
+        if pawns >= 0:
+            return f"+{pawns:.2f}"
+        return f"{pawns:.2f}"
+
+    def update_evaluation_bar():
+        """Update the evaluation bar display."""
+        if eval_bar_container.current is None or eval_text.current is None:
+            return
+        
+        try:
+            eval_score = game.get_position_evaluation(depth=2)
+            pawns = eval_score / 100.0
+            
+            # Clamp evaluation for visual display (max ±10 pawns)
+            clamped_pawns = max(-10.0, min(10.0, pawns))
+            
+            # Calculate bar position: 0.0 = all white, 1.0 = all black, 0.5 = equal
+            # Positive eval (white advantage) moves bar left, negative (black advantage) moves right
+            bar_position = 0.5 - (clamped_pawns / 20.0)  # Scale to 0-1 range
+            bar_position = max(0.0, min(1.0, bar_position))
+            
+            # Calculate bar width percentages
+            white_width_pct = bar_position * 100
+            black_width_pct = (1.0 - bar_position) * 100
+            
+            # Update text
+            eval_text.current.value = format_evaluation(eval_score)
+            if abs(eval_score) >= 100_000:
+                eval_text.current.color = ft.Colors.RED
+            elif abs(pawns) > 2.0:
+                eval_text.current.color = ft.Colors.ORANGE
+            else:
+                eval_text.current.color = ft.Colors.BLACK
+            
+            # Update bar visual using Stack for proper positioning
+            bar_width = 200
+            white_width = int(bar_width * white_width_pct / 100)
+            black_width = bar_width - white_width
+            
+            eval_bar_container.current.content = ft.Stack(
+                [
+                    # Black background (full width)
+                    ft.Container(
+                        width=bar_width,
+                        height=20,
+                        bgcolor=ft.Colors.BLACK,
+                    ),
+                    # White overlay (from left)
+                    ft.Container(
+                        width=white_width,
+                        height=20,
+                        bgcolor=ft.Colors.WHITE,
+                        border=ft.border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE) if black_width > 0 else None),
+                    ),
+                ],
+                width=bar_width,
+                height=20,
+            )
+            
+            eval_text.current.update()
+            eval_bar_container.current.update()
         except RuntimeError:
             pass  # control not on page yet
 
@@ -593,6 +673,7 @@ def main(page: ft.Page):
             black_player = config_black_ref.current.value or "human"
         update_status()
         update_clock_display()
+        update_evaluation_bar()
         page.update()
         if game_over:
             return
@@ -701,6 +782,7 @@ def main(page: ft.Page):
         refresh_board()
         update_undo_button()
         update_history()
+        update_evaluation_bar()
         page.update()
 
     def make_puzzle_tile(index: int, name: str, desc: str):
@@ -781,9 +863,41 @@ def main(page: ft.Page):
         refresh_board()
         page.update()
 
+    # Evaluation bar component
+    eval_bar = ft.Container(
+        ref=eval_bar_container,
+        content=ft.Stack(
+            [
+                ft.Container(width=200, height=20, bgcolor=ft.Colors.BLACK),
+                ft.Container(width=100, height=20, bgcolor=ft.Colors.WHITE),
+            ],
+            width=200,
+            height=20,
+        ),
+        width=200,
+        height=20,
+        border=ft.border.all(1, ft.Colors.OUTLINE),
+    )
+
     history_panel = ft.Container(
         content=ft.Column(
             [
+                ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
+                ft.Column(
+                    [
+                        eval_bar,
+                        ft.Text(
+                            ref=eval_text,
+                            value="+0.00",
+                            size=14,
+                            weight=ft.FontWeight.W_500,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                    spacing=4,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                ft.Divider(height=1),
                 ft.Text("Moves", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     controls=[
@@ -876,6 +990,7 @@ def main(page: ft.Page):
     page.on_resize = on_page_resize
     refresh_board()
     update_history()
+    update_evaluation_bar()
     update_clock_display()
     page.run_task(run_clock)
 
