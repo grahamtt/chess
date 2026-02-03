@@ -4,8 +4,11 @@ Designed to hold its own against intermediate human players without multi-ply se
 Uses: mate-in-one, winning/safe captures, checks, then best position by evaluation.
 """
 
+import random
+
 import chess
 
+from bots.base import weighted_random_choice
 from bots.minimax import evaluate
 
 # Piece values for exchange evaluation (centipawns)
@@ -80,7 +83,18 @@ class BotBot:
     Avoids moves that hang a piece when a safe alternative exists.
     """
 
-    name = "BotBot"
+    def __init__(self, randomness: float = 0.5, random_seed: int | None = None) -> None:
+        """
+        Initialize BotBot.
+
+        Args:
+            randomness: Factor from 0.0 (deterministic, always best move) to 1.0 (more uniform).
+                       Better moves have higher probability, but worse moves can still be chosen.
+            random_seed: Optional seed for random number generator (for deterministic tests).
+        """
+        self.randomness = max(0.0, min(1.0, randomness))
+        self._rng = random.Random(random_seed) if random_seed is not None else random
+        self.name = "BotBot"
 
     def choose_move(self, board: chess.Board) -> chess.Move | None:
         legal = list(board.legal_moves)
@@ -104,38 +118,30 @@ class BotBot:
             if ex is not None and ex >= 0:  # we don't lose material
                 captures.append((ex, move))
         if captures:
-            captures.sort(key=lambda x: -x[0])  # best capture first
-            best_gain = captures[0][0]
-            best_caps = [m for g, m in captures if g == best_gain]
-            return best_caps[0]  # could random.choice for variety
+            # Use weighted selection: better captures more likely, but worse ones still possible
+            return weighted_random_choice(captures, self.randomness, self._rng)
 
         # 3) Moves that give check (tactical pressure)
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
         if safe_checks:
-            # Pick best check by one-ply score
-            best_score = -1_000_000
-            best_move = safe_checks[0]
+            # Score all safe checks and use weighted selection
+            scored_checks = []
             for move in safe_checks:
                 board.push(move)
                 score = -evaluate(board)  # opponent's perspective -> ours
                 board.pop()
-                if score > best_score:
-                    best_score = score
-                    best_move = move
-            return best_move
+                scored_checks.append((score, move))
+            return weighted_random_choice(scored_checks, self.randomness, self._rng)
         if checks:
             # All checks hang something; still prefer checks that hang less
-            best_score = -1_000_000
-            best_move = checks[0]
+            scored_checks = []
             for move in checks:
                 board.push(move)
                 score = -evaluate(board)
                 board.pop()
-                if score > best_score:
-                    best_score = score
-                    best_move = move
-            return best_move
+                scored_checks.append((score, move))
+            return weighted_random_choice(scored_checks, self.randomness, self._rng)
 
         # 4) One-ply greedy: pick move that gives best evaluation after our move
         # Filter out moves that hang a piece if we have a safe alternative
@@ -146,8 +152,15 @@ class BotBot:
             board.pop()
             hangs = _move_hangs_piece(board, move)
             scored.append((score, hangs, move))
-        # Prefer safe moves; among those, prefer higher score
-        scored.sort(
-            key=lambda x: (x[1], -x[0])
-        )  # False (safe) before True (hangs), then higher score
-        return scored[0][2]
+
+        # Separate safe and unsafe moves
+        safe_moves = [(s, m) for s, h, m in scored if not h]
+        unsafe_moves = [(s, m) for s, h, m in scored if h]
+
+        # Prefer safe moves if available
+        if safe_moves:
+            # Use weighted selection among safe moves
+            return weighted_random_choice(safe_moves, self.randomness, self._rng)
+        else:
+            # Only unsafe moves available, use weighted selection
+            return weighted_random_choice(unsafe_moves, self.randomness, self._rng)
