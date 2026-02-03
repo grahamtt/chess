@@ -32,7 +32,9 @@ def test_puzzles_have_valid_fen():
 def test_puzzles_clock_settings():
     """Test that puzzles have appropriate clock settings."""
     # Most puzzles should have clock disabled
-    clock_disabled_count = sum(1 for _, _, _, clock_enabled in PUZZLES if not clock_enabled)
+    clock_disabled_count = sum(
+        1 for _, _, _, clock_enabled in PUZZLES if not clock_enabled
+    )
     assert clock_disabled_count > 0
 
     # At least one puzzle should have clock enabled (starting position)

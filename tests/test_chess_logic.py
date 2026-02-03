@@ -1,7 +1,6 @@
 """Tests for chess_logic module."""
 
 import chess
-import pytest
 from chess_logic import ChessGame, _square_to_ui, _ui_to_square
 
 
@@ -160,7 +159,9 @@ def test_chess_game_apply_move():
     assert game.turn == "black"
 
     # Invalid move
-    invalid_move = chess.Move.from_uci("e2e5")  # Pawn can't move 3 squares from start after first move
+    invalid_move = chess.Move.from_uci(
+        "e2e5"
+    )  # Pawn can't move 3 squares from start after first move
     game.reset()
     game.make_move(6, 4, 4, 4)  # e2-e4
     assert not game.apply_move(invalid_move)

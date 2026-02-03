@@ -13,7 +13,9 @@ def test_simple_bot_name():
 def test_simple_bot_choose_move_no_legal_moves():
     """Test SimpleBot returns None when there are no legal moves."""
     bot = SimpleBot()
-    board = chess.Board("8/8/8/8/8/8/8/4k3 b - - 0 1")  # Black king, no legal moves (stalemate)
+    board = chess.Board(
+        "8/8/8/8/8/8/8/4k3 b - - 0 1"
+    )  # Black king, no legal moves (stalemate)
     # Actually, let's use a checkmate position
     board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
     move = bot.choose_move(board)
@@ -36,7 +38,9 @@ def test_simple_bot_choose_move_prefers_checks():
     bot = SimpleBot()
     # Set up a position where checks are available and no captures
     # Position with queen that can give check
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     # Filter out captures to ensure we test the check path
     captures = [m for m in board.legal_moves if board.is_capture(m)]
     if not captures:  # If no captures, should prefer checks

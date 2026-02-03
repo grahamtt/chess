@@ -11,7 +11,7 @@ def test_exchange_result_mocked_none_pieces():
     move = chess.Move.from_uci("e4d5")  # A capture move
 
     # Mock piece_at to return None
-    with patch.object(board, 'piece_at', return_value=None):
+    with patch.object(board, "piece_at", return_value=None):
         result = _exchange_result(board, move)
         # Should hit line 41 (return None)
         assert result is None
@@ -53,8 +53,10 @@ def test_move_hangs_piece_mocked_none():
         board.piece_at = original_piece_at
         original_pop()
 
-    with patch.object(board, 'push', side_effect=mock_push), \
-         patch.object(board, 'pop', side_effect=mock_pop):
+    with (
+        patch.object(board, "push", side_effect=mock_push),
+        patch.object(board, "pop", side_effect=mock_pop),
+    ):
         result = _move_hangs_piece(board, move)
         # Should hit lines 58-59
         assert result is False

@@ -1,7 +1,7 @@
 """Direct tests to hit every line in bots.botbot."""
 
 import chess
-from bots.botbot import BotBot, _exchange_result, _move_hangs_piece, PIECE_VALUES
+from bots.botbot import BotBot, _exchange_result, _move_hangs_piece
 
 
 def test_exchange_result_all_branches():
@@ -44,7 +44,9 @@ def test_botbot_choose_move_mate_path():
     """Test BotBot mate in one path (lines 87-93)."""
     bot = BotBot()
     # Position with mate in one
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     move = bot.choose_move(board)
     assert move is not None
     # Should find mate if available (lines 87-93)
@@ -75,7 +77,9 @@ def test_botbot_choose_move_captures_with_sorting():
 def test_botbot_choose_move_safe_checks_scoring():
     """Test BotBot safe checks with scoring loop (lines 111-123)."""
     bot = BotBot()
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
 
     legal = list(board.legal_moves)
     checks = [m for m in legal if board.gives_check(m)]
@@ -92,7 +96,9 @@ def test_botbot_choose_move_unsafe_checks_scoring():
     """Test BotBot unsafe checks with scoring loop (lines 124-135)."""
     bot = BotBot()
     # Need position where checks exist but all hang
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
 
     legal = list(board.legal_moves)
     checks = [m for m in legal if board.gives_check(m)]

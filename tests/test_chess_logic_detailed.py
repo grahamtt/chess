@@ -1,6 +1,5 @@
 """Detailed tests for chess_logic to cover exception paths."""
 
-import chess
 from chess_logic import ChessGame
 
 

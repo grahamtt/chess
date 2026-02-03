@@ -1,7 +1,13 @@
 """Tests for bots.botbot module."""
 
 import chess
-from bots.botbot import BotBot, _exchange_result, _move_hangs_piece, _piece_value, PIECE_VALUES
+from bots.botbot import (
+    BotBot,
+    _exchange_result,
+    _move_hangs_piece,
+    _piece_value,
+    PIECE_VALUES,
+)
 
 
 def test_botbot_name():
@@ -13,8 +19,12 @@ def test_botbot_name():
 def test_piece_value():
     """Test _piece_value function."""
     assert _piece_value(None) == 0
-    assert _piece_value(chess.Piece(chess.PAWN, chess.WHITE)) == PIECE_VALUES[chess.PAWN]
-    assert _piece_value(chess.Piece(chess.QUEEN, chess.BLACK)) == PIECE_VALUES[chess.QUEEN]
+    assert (
+        _piece_value(chess.Piece(chess.PAWN, chess.WHITE)) == PIECE_VALUES[chess.PAWN]
+    )
+    assert (
+        _piece_value(chess.Piece(chess.QUEEN, chess.BLACK)) == PIECE_VALUES[chess.QUEEN]
+    )
     assert _piece_value(chess.Piece(chess.KING, chess.WHITE)) == 0
 
 
@@ -89,14 +99,16 @@ def test_botbot_prefers_mate_in_one():
     """Test BotBot prefers mate in one moves."""
     bot = BotBot()
     # Set up a mate in one position
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     move = bot.choose_move(board)
     assert move is not None
     # Check if it's a mate
     board.push(move)
     is_mate = board.is_checkmate()
     board.pop()
-    # Should find mate if available
+    assert is_mate, "BotBot should find mate when available"
     assert move in board.legal_moves
 
 
@@ -109,7 +121,13 @@ def test_botbot_prefers_winning_captures():
     assert move is not None
     assert move in board.legal_moves
     # If there's a winning capture, it should prefer it
-    captures = [m for m in board.legal_moves if board.is_capture(m) and _exchange_result(board, m) and _exchange_result(board, m) > 0]
+    captures = [
+        m
+        for m in board.legal_moves
+        if board.is_capture(m)
+        and _exchange_result(board, m)
+        and _exchange_result(board, m) > 0
+    ]
     if captures:
         # Bot should prefer one of these
         assert board.is_capture(move) or True  # May also choose checks
@@ -119,7 +137,9 @@ def test_botbot_prefers_safe_checks():
     """Test BotBot prefers safe checks."""
     bot = BotBot()
     # Set up position with checks available
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     move = bot.choose_move(board)
     assert move is not None
     assert move in board.legal_moves

@@ -27,7 +27,9 @@ def test_botbot_safe_checks_path():
     """Test BotBot's safe checks path (lines 111-123)."""
     bot = BotBot()
     # Set up position with safe checks
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     move = bot.choose_move(board)
     assert move is not None
     checks = [m for m in board.legal_moves if board.gives_check(m)]
@@ -41,7 +43,9 @@ def test_botbot_unsafe_checks_path():
     """Test BotBot's unsafe checks path (lines 124-135)."""
     bot = BotBot()
     # Set up position where all checks hang pieces
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     # This is tricky - we need a position where checks exist but all hang pieces
     # For now, just ensure the code path is tested
     move = bot.choose_move(board)

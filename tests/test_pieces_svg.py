@@ -1,6 +1,5 @@
 """Tests for pieces_svg module."""
 
-import pytest
 from pieces_svg import get_svg
 
 
@@ -46,11 +45,10 @@ def test_get_svg_different_outputs():
 
 def test_get_svg_case_sensitivity():
     """Test that piece symbols are handled correctly."""
-    # Both uppercase should work
+    # Both "K" and "k" are valid piece symbols and return SVG (white king vs black king)
     svg1 = get_svg("white", "K")
     svg2 = get_svg("white", "k")
-    # The function converts based on color, so "k" for white should become "K"
-    # Actually, let's check the implementation - it uses piece if white, piece.lower() if black
+    assert svg1 and svg2
     # So for white, "K" stays "K", for black "K" becomes "k"
     svg_white_k = get_svg("white", "K")
     svg_black_k = get_svg("black", "K")

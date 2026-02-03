@@ -101,14 +101,18 @@ def main(page: ft.Page):
             black_effective = black_remaining_secs - (now - move_start_time)
         if white_clock_text.current is not None:
             white_clock_text.current.value = format_clock(white_effective)
-            white_clock_text.current.weight = ft.FontWeight.BOLD if game.turn == "white" else ft.FontWeight.NORMAL
+            white_clock_text.current.weight = (
+                ft.FontWeight.BOLD if game.turn == "white" else ft.FontWeight.NORMAL
+            )
             try:
                 white_clock_text.current.update()
             except RuntimeError:
                 pass
         if black_clock_text.current is not None:
             black_clock_text.current.value = format_clock(black_effective)
-            black_clock_text.current.weight = ft.FontWeight.BOLD if game.turn == "black" else ft.FontWeight.NORMAL
+            black_clock_text.current.weight = (
+                ft.FontWeight.BOLD if game.turn == "black" else ft.FontWeight.NORMAL
+            )
             try:
                 black_clock_text.current.update()
             except RuntimeError:
@@ -162,15 +166,28 @@ def main(page: ft.Page):
             else:
                 update_clock_display()
                 try:
-                    if white_clock_text.current is not None and black_clock_text.current is not None:
+                    if (
+                        white_clock_text.current is not None
+                        and black_clock_text.current is not None
+                    ):
                         page.update(white_clock_text.current, black_clock_text.current)
                 except RuntimeError:
                     pass
             await asyncio.sleep(0.2)
 
-    def get_square_size(override_width: float | None = None, override_height: float | None = None) -> int:
-        w = override_width if override_width is not None else (getattr(page, "width", None) or 800)
-        h = override_height if override_height is not None else (getattr(page, "height", None) or 600)
+    def get_square_size(
+        override_width: float | None = None, override_height: float | None = None
+    ) -> int:
+        w = (
+            override_width
+            if override_width is not None
+            else (getattr(page, "width", None) or 800)
+        )
+        h = (
+            override_height
+            if override_height is not None
+            else (getattr(page, "height", None) or 600)
+        )
         # Reserve space for app bar, status bar, and history panel
         history_width = 220
         side = min(max(200, w - history_width), max(200, h - 120))
@@ -250,7 +267,9 @@ def main(page: ft.Page):
             ),
         )
 
-    def refresh_board(override_width: float | None = None, override_height: float | None = None):
+    def refresh_board(
+        override_width: float | None = None, override_height: float | None = None
+    ):
         nonlocal square_size
         square_size = get_square_size(override_width, override_height)
         grid.controls.clear()
@@ -353,9 +372,20 @@ def main(page: ft.Page):
                 ft.Row(
                     [
                         ft.Text("White ", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(ref=white_clock_text, value=format_clock(time_control_secs), size=14, weight=ft.FontWeight.BOLD),
-                        ft.Text("  Black ", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(ref=black_clock_text, value=format_clock(time_control_secs), size=14),
+                        ft.Text(
+                            ref=white_clock_text,
+                            value=format_clock(time_control_secs),
+                            size=14,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        ft.Text(
+                            "  Black ", size=14, color=ft.Colors.ON_SURFACE_VARIANT
+                        ),
+                        ft.Text(
+                            ref=black_clock_text,
+                            value=format_clock(time_control_secs),
+                            size=14,
+                        ),
                     ],
                     spacing=0,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -370,7 +400,14 @@ def main(page: ft.Page):
 
     def do_new_game(_):
         """Reset the game (called after confirmation)."""
-        nonlocal selected, valid_moves, game_over, white_remaining_secs, black_remaining_secs, move_start_time, clock_enabled
+        nonlocal \
+            selected, \
+            valid_moves, \
+            game_over, \
+            white_remaining_secs, \
+            black_remaining_secs, \
+            move_start_time, \
+            clock_enabled
         page.pop_dialog()
         game.reset()
         selected = None
@@ -545,7 +582,9 @@ def main(page: ft.Page):
         selected = None
         valid_moves = []
         clock_enabled = puzzle_clock_enabled
-        game_over = game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+        game_over = (
+            game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+        )
         update_status()
         update_clock_display()
         refresh_board()
@@ -561,7 +600,8 @@ def main(page: ft.Page):
         )
 
     puzzle_list_controls = [
-        make_puzzle_tile(i, name, desc) for i, (name, _fen, desc, _clock) in enumerate(PUZZLES)
+        make_puzzle_tile(i, name, desc)
+        for i, (name, _fen, desc, _clock) in enumerate(PUZZLES)
     ]
 
     puzzles_dialog = ft.AlertDialog(
@@ -591,7 +631,12 @@ def main(page: ft.Page):
                 ft.Text("Moves", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     controls=[
-                        ft.Text(ref=history_text, value="No moves yet.", selectable=True, size=14),
+                        ft.Text(
+                            ref=history_text,
+                            value="No moves yet.",
+                            selectable=True,
+                            size=14,
+                        ),
                     ],
                     scroll=ft.ScrollMode.AUTO,
                     expand=True,

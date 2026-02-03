@@ -16,19 +16,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
-        with:
-          version: latest
-
-      - name: Install tools with mise
-        run: |
-          mise install
+        uses: jdx/mise-action@v3
 
       - name: Set up uv environment
         run: |
-          mise run -- uv venv
-          mise run -- uv sync
+          uv venv
+          uv sync
 
       - name: Run pre-commit hooks
         run: |
-          mise run -- pre-commit run --all-files
+          pre-commit run --all-files

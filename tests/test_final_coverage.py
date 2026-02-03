@@ -1,7 +1,7 @@
 """Final tests to achieve 100% coverage."""
 
 import chess
-from bots.botbot import BotBot, _exchange_result, _move_hangs_piece
+from bots.botbot import BotBot, _move_hangs_piece
 from bots.minimax import evaluate
 from bots.simple import SimpleBot
 from chess_logic import ChessGame
@@ -11,12 +11,16 @@ def test_botbot_safe_checks_path_forced():
     """Force safe checks path (lines 114-123) with position that has no mate."""
     bot = BotBot()
     # Position with safe checks but no mate
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4"
+    )
 
     legal = list(board.legal_moves)
     # Verify no mate
     has_mate = any(
-        (board.push(m), board.is_checkmate(), board.pop())[1] if board.is_checkmate() else False
+        (board.push(m), board.is_checkmate(), board.pop())[1]
+        if board.is_checkmate()
+        else False
         for m in legal
     )
     # Better way
@@ -42,7 +46,9 @@ def test_botbot_unsafe_checks_path_forced():
     """Force unsafe checks path (lines 126-135) with position that has no mate and no safe checks."""
     bot = BotBot()
     # This is harder - need checks but all hang
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/3P1N2/PPP2PPP/RNB1K2R w KQkq - 4 4"
+    )
 
     legal = list(board.legal_moves)
     has_mate = False
@@ -72,7 +78,7 @@ def test_minimax_evaluate_fifty_moves():
     # This is complex, but we test the condition
     board = chess.Board("8/8/8/8/8/8/4k3/4K3 w - - 50 100")
     # Manually check
-    if hasattr(board, 'can_claim_fifty_moves') and board.can_claim_fifty_moves():
+    if hasattr(board, "can_claim_fifty_moves") and board.can_claim_fifty_moves():
         score = evaluate(board)
         assert score == 0
 
@@ -81,7 +87,9 @@ def test_simple_bot_checks_branch():
     """Test SimpleBot checks branch (line 32) with position that has checks but no captures."""
     bot = SimpleBot()
     # Need position with checks but no captures
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     captures = [m for m in board.legal_moves if board.is_capture(m)]
     checks = [m for m in board.legal_moves if board.gives_check(m)]
 

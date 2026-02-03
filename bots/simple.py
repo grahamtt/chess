@@ -6,8 +6,6 @@ import random
 
 import chess
 
-from bots.base import ChessBot
-
 
 class SimpleBot:
     """Rules-based bot: prefer captures and checks, otherwise random."""

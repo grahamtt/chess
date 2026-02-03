@@ -1,7 +1,6 @@
 """Tests for bots.minimax module."""
 
 import chess
-import pytest
 from bots.minimax import (
     MinimaxBot,
     evaluate,

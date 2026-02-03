@@ -52,7 +52,11 @@ def test_botbot_winning_captures():
     move = bot.choose_move(board)
     assert move is not None
     # Should be a capture (unless mate is available)
-    if not any(board.push(m) or (board.is_checkmate() and board.pop()) or board.pop() for m in board.legal_moves if not board.is_capture(m)):
+    if not any(
+        board.push(m) or (board.is_checkmate() and board.pop()) or board.pop()
+        for m in board.legal_moves
+        if not board.is_capture(m)
+    ):
         # If no mate, should prefer capture
         pass  # Bot may still choose mate if available
 
@@ -61,7 +65,9 @@ def test_botbot_safe_checks_with_multiple():
     """Test BotBot safe checks path with multiple checks to hit scoring loop (lines 114-123)."""
     bot = BotBot()
     # Position with multiple safe checks
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
 
     # Ensure we have safe checks
     checks = [m for m in board.legal_moves if board.gives_check(m)]
@@ -79,7 +85,9 @@ def test_botbot_unsafe_checks_with_multiple():
     bot = BotBot()
     # We need a position where all checks hang pieces
     # This is position-dependent, so we test what we can
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
 
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]

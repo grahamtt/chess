@@ -74,7 +74,8 @@ class ChessGame:
         from_sq = _ui_to_square(from_row, from_col)
         to_sq = _ui_to_square(to_row, to_col)
         candidates = [
-            m for m in self._board.legal_moves
+            m
+            for m in self._board.legal_moves
             if m.from_square == from_sq and m.to_square == to_sq
         ]
         if not candidates:

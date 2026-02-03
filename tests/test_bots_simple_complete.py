@@ -21,11 +21,15 @@ def test_simple_bot_all_paths():
         move = bot.choose_move(board)
         assert move is not None
         # Should be a capture (bot prefers captures)
-        assert board.is_capture(move) or True  # May occasionally not be due to shuffle, but should usually be
+        assert (
+            board.is_capture(move) or True
+        )  # May occasionally not be due to shuffle, but should usually be
 
     # Test path 3: Has checks but no captures (line 32)
     # Need a position with checks but no captures
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     # Filter out captures
     captures = [m for m in board.legal_moves if board.is_capture(m)]
     checks = [m for m in board.legal_moves if board.gives_check(m)]
@@ -39,7 +43,8 @@ def test_simple_bot_all_paths():
     board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     # Some moves don't give check or capture
     non_capture_non_check = [
-        m for m in board.legal_moves
+        m
+        for m in board.legal_moves
         if not board.is_capture(m) and not board.gives_check(m)
     ]
     if non_capture_non_check:

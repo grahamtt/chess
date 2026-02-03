@@ -6,7 +6,6 @@ Uses: mate-in-one, winning/safe captures, checks, then best position by evaluati
 
 import chess
 
-from bots.base import ChessBot
 from bots.minimax import evaluate
 
 # Piece values for exchange evaluation (centipawns)
@@ -62,7 +61,11 @@ def _move_hangs_piece(board: chess.Board, move: chess.Move) -> bool:
     capturers = []
     for sq in chess.SQUARES:
         p = board.piece_at(sq)
-        if p is not None and p.color != board.turn and board.is_legal(chess.Move(sq, to_sq)):
+        if (
+            p is not None
+            and p.color != board.turn
+            and board.is_legal(chess.Move(sq, to_sq))
+        ):
             capturers.append(_piece_value(p))
     board.pop()
     if not capturers:
@@ -144,5 +147,7 @@ class BotBot:
             hangs = _move_hangs_piece(board, move)
             scored.append((score, hangs, move))
         # Prefer safe moves; among those, prefer higher score
-        scored.sort(key=lambda x: (x[1], -x[0]))  # False (safe) before True (hangs), then higher score
+        scored.sort(
+            key=lambda x: (x[1], -x[0])
+        )  # False (safe) before True (hangs), then higher score
         return scored[0][2]

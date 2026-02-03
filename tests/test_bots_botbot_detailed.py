@@ -75,7 +75,9 @@ def test_botbot_safe_checks_detailed():
     """Test BotBot safe checks path in detail (lines 111-123)."""
     bot = BotBot()
     # Position with checks
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
 
@@ -92,7 +94,9 @@ def test_botbot_unsafe_checks_detailed():
     bot = BotBot()
     # We need a position where checks exist but all hang pieces
     # This is complex, but we can test the code path exists
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    board = chess.Board(
+        "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
+    )
     checks = [m for m in board.legal_moves if board.gives_check(m)]
     safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
 
