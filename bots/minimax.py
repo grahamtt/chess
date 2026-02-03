@@ -5,7 +5,6 @@ Uses material + positional scoring (center control, mobility, piece-square).
 
 import chess
 
-from bots.base import ChessBot
 
 # Standard piece values (centipawns)
 PIECE_VALUES = {
@@ -19,30 +18,53 @@ PIECE_VALUES = {
 
 # Center and extended center squares — bonus for control
 CENTER_SQUARES = {
-    chess.D4, chess.D5, chess.E4, chess.E5,
-    chess.C3, chess.C4, chess.C5, chess.C6,
-    chess.D3, chess.D6, chess.E3, chess.E6,
-    chess.F3, chess.F4, chess.F5, chess.F6,
+    chess.D4,
+    chess.D5,
+    chess.E4,
+    chess.E5,
+    chess.C3,
+    chess.C4,
+    chess.C5,
+    chess.C6,
+    chess.D3,
+    chess.D6,
+    chess.E3,
+    chess.E6,
+    chess.F3,
+    chess.F4,
+    chess.F5,
+    chess.F6,
 }
 CENTER_BONUS = 12
 
 # Mobility: bonus per legal move
 MOBILITY_BONUS = 8
 
+
 # Pawn advancement: bonus per rank advanced (perspective of piece color)
 def _pawn_advancement_bonus(square: chess.Square, color: chess.Color) -> int:
     rank = chess.square_rank(square)
     if color:
         return rank - 1  # White: rank 1=0, rank 7=6
-    return 6 - rank     # Black: rank 8=0, rank 2=6
+    return 6 - rank  # Black: rank 8=0, rank 2=6
+
 
 PAWN_ADVANCE_WEIGHT = 5
 
 # Knight on good central squares
 KNIGHT_CENTER_SQUARES = {
-    chess.C3, chess.C4, chess.C5, chess.C6,
-    chess.D4, chess.D5, chess.E4, chess.E5,
-    chess.F3, chess.F4, chess.F5, chess.F6,
+    chess.C3,
+    chess.C4,
+    chess.C5,
+    chess.C6,
+    chess.D4,
+    chess.D5,
+    chess.E4,
+    chess.E5,
+    chess.F3,
+    chess.F4,
+    chess.F5,
+    chess.F6,
 }
 KNIGHT_CENTER_BONUS = 15
 
@@ -63,7 +85,9 @@ def _evaluate_material_and_position(board: chess.Board) -> int:
             if square in CENTER_SQUARES:
                 score += CENTER_BONUS
             if piece.piece_type == chess.PAWN:
-                score += _pawn_advancement_bonus(square, piece.color) * PAWN_ADVANCE_WEIGHT
+                score += (
+                    _pawn_advancement_bonus(square, piece.color) * PAWN_ADVANCE_WEIGHT
+                )
             if piece.piece_type == chess.KNIGHT and square in KNIGHT_CENTER_SQUARES:
                 score += KNIGHT_CENTER_BONUS
         else:
@@ -71,7 +95,9 @@ def _evaluate_material_and_position(board: chess.Board) -> int:
             if square in CENTER_SQUARES:
                 score -= CENTER_BONUS
             if piece.piece_type == chess.PAWN:
-                score -= _pawn_advancement_bonus(square, piece.color) * PAWN_ADVANCE_WEIGHT
+                score -= (
+                    _pawn_advancement_bonus(square, piece.color) * PAWN_ADVANCE_WEIGHT
+                )
             if piece.piece_type == chess.KNIGHT and square in KNIGHT_CENTER_SQUARES:
                 score -= KNIGHT_CENTER_BONUS
     return score
