@@ -53,6 +53,6 @@ class SimpleBot:
 
         # Score all moves
         scored_moves = [(self._simple_score(board, move), move) for move in legal]
-        
+
         # Use weighted selection: better moves more likely, but worse ones still possible
         return weighted_random_choice(scored_moves, self.randomness, self._rng)

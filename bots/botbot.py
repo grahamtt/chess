@@ -152,11 +152,11 @@ class BotBot:
             board.pop()
             hangs = _move_hangs_piece(board, move)
             scored.append((score, hangs, move))
-        
+
         # Separate safe and unsafe moves
         safe_moves = [(s, m) for s, h, m in scored if not h]
         unsafe_moves = [(s, m) for s, h, m in scored if h]
-        
+
         # Prefer safe moves if available
         if safe_moves:
             # Use weighted selection among safe moves

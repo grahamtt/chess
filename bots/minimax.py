@@ -143,7 +143,7 @@ def negamax(
     """
     Negamax with alpha-beta pruning. Returns (score, best_move).
     Score is from current side to move's perspective.
-    
+
     Args:
         randomness: If > 0 and multiple moves have the same best score, randomly choose among them.
         rng: Random number generator to use (for deterministic tests).
@@ -177,7 +177,9 @@ def negamax(
 class MinimaxBot:
     """Minimax bot with configurable search depth (alpha-beta pruning)."""
 
-    def __init__(self, depth: int = 3, randomness: float = 0.3, random_seed: int | None = None) -> None:
+    def __init__(
+        self, depth: int = 3, randomness: float = 0.3, random_seed: int | None = None
+    ) -> None:
         """
         Initialize MinimaxBot.
 
@@ -198,20 +200,24 @@ class MinimaxBot:
         legal = list(board.legal_moves)
         if not legal:
             return None
-        
+
         if self.randomness == 0.0:
             # Deterministic: use original negamax
-            _, best = negamax(board.copy(), self.depth, -1_000_000, 1_000_000, 0.0, None)
+            _, best = negamax(
+                board.copy(), self.depth, -1_000_000, 1_000_000, 0.0, None
+            )
             return best
-        
+
         # Collect scores for all moves using negamax
         scored_moves = []
         for move in legal:
             test_board = board.copy()
             test_board.push(move)
-            score, _ = negamax(test_board, self.depth - 1, -1_000_000, 1_000_000, 0.0, None)
+            score, _ = negamax(
+                test_board, self.depth - 1, -1_000_000, 1_000_000, 0.0, None
+            )
             # Negate because negamax returns score from opponent's perspective
             scored_moves.append((-score, move))
-        
+
         # Use weighted selection based on scores
         return weighted_random_choice(scored_moves, self.randomness, self._rng)
