@@ -20,10 +20,8 @@ jobs:
 
       - name: Set up uv environment
         run: |
-          uv venv
           uv sync
-          source .venv/bin/activate
 
       - name: Run pre-commit hooks
         run: |
-          pre-commit run --all-files
+          uv run pre-commit run --all-files
