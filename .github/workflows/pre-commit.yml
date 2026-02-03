@@ -22,6 +22,7 @@ jobs:
         run: |
           uv venv
           uv sync
+          source .venv/bin/activate
 
       - name: Run pre-commit hooks
         run: |
