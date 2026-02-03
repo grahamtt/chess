@@ -146,24 +146,26 @@ class ChessGame:
             n += 1
         return "\n".join(lines)
 
-    def get_hint_moves(self, depth: int = 3, top_n: int = 3) -> list[tuple[chess.Move, int, str]]:
+    def get_hint_moves(
+        self, depth: int = 3, top_n: int = 3
+    ) -> list[tuple[chess.Move, int, str]]:
         """
         Get top N best moves for the current position using minimax evaluation.
         Returns list of (move, score, san_notation) tuples, sorted by score (best first).
-        
+
         Args:
             depth: Search depth for minimax (default 3)
             top_n: Number of top moves to return (default 3)
         """
-        from bots.minimax import negamax, evaluate
-        
+        from bots.minimax import negamax
+
         if self._board.is_game_over():
             return []
-        
+
         legal_moves = list(self._board.legal_moves)
         if not legal_moves:
             return []
-        
+
         # Evaluate each move
         scored_moves = []
         for move in legal_moves:
@@ -173,15 +175,15 @@ class ChessGame:
             score, _ = negamax(test_board, depth - 1, -1_000_000, 1_000_000, 0.0, None)
             # Negate because negamax returns score from opponent's perspective
             our_score = -score
-            
+
             # Get SAN notation for the move
             try:
                 san = self._board.san(move)
             except (AssertionError, ValueError):
                 san = move.uci()
-            
+
             scored_moves.append((our_score, move, san))
-        
+
         # Sort by score (descending) and return top N
         scored_moves.sort(key=lambda x: x[0], reverse=True)
         return [(move, score, san) for score, move, san in scored_moves[:top_n]]

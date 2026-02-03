@@ -205,12 +205,16 @@ def main(page: ft.Page):
     def build_square(row: int, col: int) -> ft.Container:
         cell = game.piece_at(row, col)
         bg = square_color(row, col)
-        
+
         # Only show hints during human turns
         show_hints = is_human_turn() and hint_moves
-        is_hint_from = show_hints and any((row, col) == hint_from for hint_from, _, _, _ in hint_moves)
-        is_hint_to = show_hints and any((row, col) == hint_to for _, hint_to, _, _ in hint_moves)
-        
+        is_hint_from = show_hints and any(
+            (row, col) == hint_from for hint_from, _, _, _ in hint_moves
+        )
+        is_hint_to = show_hints and any(
+            (row, col) == hint_to for _, hint_to, _, _ in hint_moves
+        )
+
         if selected == (row, col):
             bg = SELECTED
         elif is_hint_from:
@@ -600,7 +604,7 @@ def main(page: ft.Page):
         name, fen, _, puzzle_clock_enabled = PUZZLES[index]
         if not game.set_fen(fen):
             return
-        nonlocal selected, valid_moves, game_over, clock_enabled
+        nonlocal selected, valid_moves, hint_moves, game_over, clock_enabled
         selected = None
         valid_moves = []
         hint_moves = []  # Clear hints when loading puzzle
@@ -653,7 +657,7 @@ def main(page: ft.Page):
         nonlocal hint_moves
         if game_over or not is_human_turn():
             return
-        
+
         # Get hint moves from the game
         hint_data = game.get_hint_moves(depth=3, top_n=3)
         if not hint_data:
@@ -661,9 +665,10 @@ def main(page: ft.Page):
             message.current.color = ft.Colors.ORANGE
             page.update()
             return
-        
+
         # Convert hint moves to UI coordinates
         import chess
+
         hint_moves = []
         for move, score, san in hint_data:
             from_sq = move.from_square
@@ -675,7 +680,7 @@ def main(page: ft.Page):
             from_row, from_col = (7 - from_rank, from_file)
             to_row, to_col = (7 - to_rank, to_file)
             hint_moves.append(((from_row, from_col), (to_row, to_col), score, san))
-        
+
         # Update message with hint info
         if hint_moves:
             best_move = hint_moves[0]
@@ -688,7 +693,7 @@ def main(page: ft.Page):
         else:
             message.current.value = "No hints available."
             message.current.color = ft.Colors.ORANGE
-        
+
         refresh_board()
         page.update()
 
