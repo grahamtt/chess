@@ -8,6 +8,7 @@ import random
 
 import chess
 
+from bots.base import weighted_random_choice
 from bots.minimax import evaluate
 
 # Piece values for exchange evaluation (centipawns)
@@ -87,8 +88,8 @@ class BotBot:
         Initialize BotBot.
 
         Args:
-            randomness: Factor from 0.0 (deterministic) to 1.0 (fully random).
-                       When 0.0, always picks first move among equally good options.
+            randomness: Factor from 0.0 (deterministic, always best move) to 1.0 (more uniform).
+                       Better moves have higher probability, but worse moves can still be chosen.
             random_seed: Optional seed for random number generator (for deterministic tests).
         """
         self.randomness = max(0.0, min(1.0, randomness))
@@ -117,48 +118,30 @@ class BotBot:
             if ex is not None and ex >= 0:  # we don't lose material
                 captures.append((ex, move))
         if captures:
-            captures.sort(key=lambda x: -x[0])  # best capture first
-            best_gain = captures[0][0]
-            best_caps = [m for g, m in captures if g == best_gain]
-            if self.randomness > 0 and len(best_caps) > 1:
-                return self._rng.choice(best_caps)
-            return best_caps[0]
+            # Use weighted selection: better captures more likely, but worse ones still possible
+            return weighted_random_choice(captures, self.randomness, self._rng)
 
         # 3) Moves that give check (tactical pressure)
         checks = [m for m in legal if board.gives_check(m)]
         safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
         if safe_checks:
-            # Pick best check by one-ply score
-            best_score = -1_000_000
-            best_moves = []
+            # Score all safe checks and use weighted selection
+            scored_checks = []
             for move in safe_checks:
                 board.push(move)
                 score = -evaluate(board)  # opponent's perspective -> ours
                 board.pop()
-                if score > best_score:
-                    best_score = score
-                    best_moves = [move]
-                elif score == best_score:
-                    best_moves.append(move)
-            if self.randomness > 0 and len(best_moves) > 1:
-                return self._rng.choice(best_moves)
-            return best_moves[0]
+                scored_checks.append((score, move))
+            return weighted_random_choice(scored_checks, self.randomness, self._rng)
         if checks:
             # All checks hang something; still prefer checks that hang less
-            best_score = -1_000_000
-            best_moves = []
+            scored_checks = []
             for move in checks:
                 board.push(move)
                 score = -evaluate(board)
                 board.pop()
-                if score > best_score:
-                    best_score = score
-                    best_moves = [move]
-                elif score == best_score:
-                    best_moves.append(move)
-            if self.randomness > 0 and len(best_moves) > 1:
-                return self._rng.choice(best_moves)
-            return best_moves[0]
+                scored_checks.append((score, move))
+            return weighted_random_choice(scored_checks, self.randomness, self._rng)
 
         # 4) One-ply greedy: pick move that gives best evaluation after our move
         # Filter out moves that hang a piece if we have a safe alternative
@@ -169,12 +152,15 @@ class BotBot:
             board.pop()
             hangs = _move_hangs_piece(board, move)
             scored.append((score, hangs, move))
-        # Prefer safe moves; among those, prefer higher score
-        scored.sort(key=lambda x: (x[1], -x[0]))  # False (safe) before True (hangs), then higher score
-        # Find all moves with the same (hangs, score) as the best
-        best_hangs = scored[0][1]
-        best_score = scored[0][0]
-        best_moves = [m for s, h, m in scored if h == best_hangs and s == best_score]
-        if self.randomness > 0 and len(best_moves) > 1:
-            return self._rng.choice(best_moves)
-        return best_moves[0]
+        
+        # Separate safe and unsafe moves
+        safe_moves = [(s, m) for s, h, m in scored if not h]
+        unsafe_moves = [(s, m) for s, h, m in scored if h]
+        
+        # Prefer safe moves if available
+        if safe_moves:
+            # Use weighted selection among safe moves
+            return weighted_random_choice(safe_moves, self.randomness, self._rng)
+        else:
+            # Only unsafe moves available, use weighted selection
+            return weighted_random_choice(unsafe_moves, self.randomness, self._rng)

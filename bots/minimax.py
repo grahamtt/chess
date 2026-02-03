@@ -7,6 +7,8 @@ import random
 
 import chess
 
+from bots.base import weighted_random_choice
+
 
 # Standard piece values (centipawns)
 PIECE_VALUES = {
@@ -181,8 +183,8 @@ class MinimaxBot:
 
         Args:
             depth: Search depth (minimum 1).
-            randomness: Factor from 0.0 (deterministic) to 1.0 (fully random).
-                       When 0.0, always picks first move among equally scored moves.
+            randomness: Factor from 0.0 (deterministic, always best move) to 1.0 (more uniform).
+                       Better moves have higher probability, but worse moves can still be chosen.
             random_seed: Optional seed for random number generator (for deterministic tests).
         """
         if depth < 1:
@@ -196,6 +198,20 @@ class MinimaxBot:
         legal = list(board.legal_moves)
         if not legal:
             return None
-        rng = self._rng if self.randomness > 0 else None
-        _, best = negamax(board.copy(), self.depth, -1_000_000, 1_000_000, self.randomness, rng)
-        return best
+        
+        if self.randomness == 0.0:
+            # Deterministic: use original negamax
+            _, best = negamax(board.copy(), self.depth, -1_000_000, 1_000_000, 0.0, None)
+            return best
+        
+        # Collect scores for all moves using negamax
+        scored_moves = []
+        for move in legal:
+            test_board = board.copy()
+            test_board.push(move)
+            score, _ = negamax(test_board, self.depth - 1, -1_000_000, 1_000_000, 0.0, None)
+            # Negate because negamax returns score from opponent's perspective
+            scored_moves.append((-score, move))
+        
+        # Use weighted selection based on scores
+        return weighted_random_choice(scored_moves, self.randomness, self._rng)
