@@ -43,6 +43,9 @@ def main(page: ft.Page):
     black_remaining_secs = float(time_control_secs)
     move_start_time = time.monotonic()
     clock_enabled = True  # False when playing puzzles (no time pressure)
+    clock_started = (
+        False  # True only after white's first move (clock does not run until then)
+    )
 
     # Per-player: "human" | "random" | "botbot" | "minimax_1" | ...
     white_player = "human"
@@ -78,7 +81,7 @@ def main(page: ft.Page):
         return f"{m}:{s:02d}"
 
     def update_clock_display():
-        """Refresh both players' clock display (remaining time, active = running). When clock disabled, show 'Clock off'."""
+        """Refresh both players' clock display (remaining time, active = running). When clock disabled, show 'Clock off'. Before white's first move, show full time and do not count down."""
         if not clock_enabled:
             if white_clock_text.current is not None:
                 white_clock_text.current.value = "—"
@@ -90,6 +93,27 @@ def main(page: ft.Page):
             if black_clock_text.current is not None:
                 black_clock_text.current.value = "—"
                 black_clock_text.current.weight = ft.FontWeight.NORMAL
+                try:
+                    black_clock_text.current.update()
+                except RuntimeError:
+                    pass
+            return
+        if not clock_started:
+            # Before white's first move: show full time for both, no countdown
+            if white_clock_text.current is not None:
+                white_clock_text.current.value = format_clock(white_remaining_secs)
+                white_clock_text.current.weight = (
+                    ft.FontWeight.BOLD if game.turn == "white" else ft.FontWeight.NORMAL
+                )
+                try:
+                    white_clock_text.current.update()
+                except RuntimeError:
+                    pass
+            if black_clock_text.current is not None:
+                black_clock_text.current.value = format_clock(black_remaining_secs)
+                black_clock_text.current.weight = (
+                    ft.FontWeight.BOLD if game.turn == "black" else ft.FontWeight.NORMAL
+                )
                 try:
                     black_clock_text.current.update()
                 except RuntimeError:
@@ -122,12 +146,23 @@ def main(page: ft.Page):
                 pass
 
     def deduct_move_time_and_check_game_over():
-        """Call after a move is applied: deduct elapsed time from the player who moved; end game if they ran out. No-op when clock disabled."""
+        """Call after a move is applied: deduct elapsed time from the player who moved; end game if they ran out. No-op when clock disabled. Clock does not run until after white's first move."""
         if not clock_enabled:
             update_clock_display()
             return
-        nonlocal move_start_time, white_remaining_secs, black_remaining_secs, game_over
+        nonlocal \
+            move_start_time, \
+            white_remaining_secs, \
+            black_remaining_secs, \
+            game_over, \
+            clock_started
         now = time.monotonic()
+        if not clock_started:
+            # White just made first move; start the clock now (no deduction for white)
+            clock_started = True
+            move_start_time = now
+            update_clock_display()
+            return
         elapsed = now - move_start_time
         move_start_time = now
         # The player who just moved had their clock running (it was their turn before the move)
@@ -146,10 +181,12 @@ def main(page: ft.Page):
         update_clock_display()
 
     async def run_clock():
-        """Periodically update clock display and end game if current player runs out of time. Does nothing when clock disabled."""
+        """Periodically update clock display and end game if current player runs out of time. Does nothing when clock disabled or before white's first move."""
         nonlocal game_over
         while True:
-            if game_over or not clock_enabled:
+            if game_over or not clock_enabled or not clock_started:
+                if clock_enabled:
+                    update_clock_display()
                 await asyncio.sleep(0.5)
                 continue
             now = time.monotonic()
@@ -431,16 +468,23 @@ def main(page: ft.Page):
             white_remaining_secs, \
             black_remaining_secs, \
             move_start_time, \
-            clock_enabled
+            clock_enabled, \
+            clock_started
         page.pop_dialog()
         game.reset()
         selected = None
         valid_moves = []
         hint_moves = []
         game_over = False
-        clock_enabled = True
-        white_remaining_secs = float(time_control_secs)
-        black_remaining_secs = float(time_control_secs)
+        clock_started = False
+        if time_control_secs is None:
+            clock_enabled = False
+            white_remaining_secs = 0.0
+            black_remaining_secs = 0.0
+        else:
+            clock_enabled = True
+            white_remaining_secs = float(time_control_secs)
+            black_remaining_secs = float(time_control_secs)
         move_start_time = time.monotonic()
         message.current.value = "White to move."
         message.current.color = ft.Colors.BLACK
@@ -453,7 +497,13 @@ def main(page: ft.Page):
             page.run_task(run_bot_vs_bot)
 
     def do_undo(_):
-        nonlocal selected, valid_moves, hint_moves, game_over, move_start_time
+        nonlocal \
+            selected, \
+            valid_moves, \
+            hint_moves, \
+            game_over, \
+            move_start_time, \
+            clock_started
         if not game.undo():
             return
         selected = None
@@ -461,6 +511,9 @@ def main(page: ft.Page):
         hint_moves = []  # Clear hints when undoing
         game_over = False
         move_start_time = time.monotonic()
+        # If we undid back to the starting position, clock has not "started" yet
+        if clock_enabled:
+            clock_started = game.can_undo()
         update_status()
         update_clock_display()
         refresh_board()
@@ -495,6 +548,7 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
     ]
     time_options = [
+        ft.DropdownOption(key="unlimited", text="Unlimited"),
         ft.DropdownOption(key="60", text="1 min"),
         ft.DropdownOption(key="180", text="3 min"),
         ft.DropdownOption(key="300", text="5 min"),
@@ -507,13 +561,32 @@ def main(page: ft.Page):
 
     def apply_config(_=None):
         """Apply configuration from dialog and close it."""
-        nonlocal white_player, black_player, time_control_secs
+        nonlocal \
+            white_player, \
+            black_player, \
+            time_control_secs, \
+            clock_enabled, \
+            clock_started, \
+            white_remaining_secs, \
+            black_remaining_secs, \
+            move_start_time
         page.pop_dialog()
         if config_time_ref.current is not None:
-            try:
-                time_control_secs = int(config_time_ref.current.value or "300")
-            except (ValueError, TypeError):
-                time_control_secs = 300
+            raw = config_time_ref.current.value or "300"
+            if raw == "unlimited":
+                time_control_secs = None
+                clock_enabled = False  # take effect in current game
+            else:
+                try:
+                    time_control_secs = int(raw)
+                except (ValueError, TypeError):
+                    time_control_secs = 300
+                clock_enabled = True  # take effect in current game
+                white_remaining_secs = float(time_control_secs)
+                black_remaining_secs = float(time_control_secs)
+                move_start_time = time.monotonic()
+                # Clock runs only after white's first move
+                clock_started = game.can_undo()
         if config_white_ref.current is not None:
             white_player = config_white_ref.current.value or "human"
         if config_black_ref.current is not None:
@@ -535,7 +608,9 @@ def main(page: ft.Page):
                 ft.Text("Time control", size=14, weight=ft.FontWeight.W_500),
                 ft.Dropdown(
                     ref=config_time_ref,
-                    value=str(time_control_secs),
+                    value="unlimited"
+                    if time_control_secs is None
+                    else str(time_control_secs),
                     width=200,
                     options=time_options,
                 ),
@@ -568,7 +643,9 @@ def main(page: ft.Page):
         page.show_dialog(config_dialog)
         # Sync dialog dropdowns to current config (in case dialog was opened before)
         if config_time_ref.current is not None:
-            config_time_ref.current.value = str(time_control_secs)
+            config_time_ref.current.value = (
+                "unlimited" if time_control_secs is None else str(time_control_secs)
+            )
             config_time_ref.current.update()
         if config_white_ref.current is not None:
             config_white_ref.current.value = white_player
@@ -604,11 +681,18 @@ def main(page: ft.Page):
         name, fen, _, puzzle_clock_enabled = PUZZLES[index]
         if not game.set_fen(fen):
             return
-        nonlocal selected, valid_moves, hint_moves, game_over, clock_enabled
+        nonlocal \
+            selected, \
+            valid_moves, \
+            hint_moves, \
+            game_over, \
+            clock_enabled, \
+            clock_started
         selected = None
         valid_moves = []
         hint_moves = []  # Clear hints when loading puzzle
         clock_enabled = puzzle_clock_enabled
+        clock_started = puzzle_clock_enabled and game.can_undo()
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
