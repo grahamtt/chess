@@ -554,23 +554,22 @@ def main(page: ft.Page):
         """Update the evaluation bar display."""
         if eval_bar_container.current is None or eval_text.current is None:
             return
-        
+
         try:
             eval_score = game.get_position_evaluation(depth=2)
             pawns = eval_score / 100.0
-            
+
             # Clamp evaluation for visual display (max ±10 pawns)
             clamped_pawns = max(-10.0, min(10.0, pawns))
-            
+
             # Calculate bar position: 0.0 = all white, 1.0 = all black, 0.5 = equal
             # Positive eval (white advantage) moves bar left, negative (black advantage) moves right
             bar_position = 0.5 - (clamped_pawns / 20.0)  # Scale to 0-1 range
             bar_position = max(0.0, min(1.0, bar_position))
-            
+
             # Calculate bar width percentages
             white_width_pct = bar_position * 100
-            black_width_pct = (1.0 - bar_position) * 100
-            
+
             # Update text
             eval_text.current.value = format_evaluation(eval_score)
             if abs(eval_score) >= 100_000:
@@ -579,12 +578,12 @@ def main(page: ft.Page):
                 eval_text.current.color = ft.Colors.ORANGE
             else:
                 eval_text.current.color = ft.Colors.BLACK
-            
+
             # Update bar visual using Stack for proper positioning
             bar_width = 200
             white_width = int(bar_width * white_width_pct / 100)
             black_width = bar_width - white_width
-            
+
             eval_bar_container.current.content = ft.Stack(
                 [
                     # Black background (full width)
@@ -598,13 +597,17 @@ def main(page: ft.Page):
                         width=white_width,
                         height=20,
                         bgcolor=ft.Colors.WHITE,
-                        border=ft.border.only(right=ft.BorderSide(1, ft.Colors.OUTLINE) if black_width > 0 else None),
+                        border=ft.border.only(
+                            right=ft.BorderSide(1, ft.Colors.OUTLINE)
+                            if black_width > 0
+                            else None
+                        ),
                     ),
                 ],
                 width=bar_width,
                 height=20,
             )
-            
+
             eval_text.current.update()
             eval_bar_container.current.update()
         except RuntimeError:
