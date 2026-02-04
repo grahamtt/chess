@@ -192,6 +192,7 @@ class ChessGame:
         """
         Get position evaluation in centipawns from white's perspective.
         Positive values favor white, negative values favor black.
+        Uses a neutral evaluation that doesn't bias based on whose turn it is.
 
         Args:
             depth: Search depth for evaluation (default 2 for quick updates)
@@ -199,7 +200,17 @@ class ChessGame:
         Returns:
             Evaluation score in centipawns (100 = 1 pawn advantage for white)
         """
-        from bots.minimax import evaluate, negamax
+        from bots.minimax import (
+            CENTER_BONUS,
+            CENTER_SQUARES,
+            CHECK_BONUS,
+            KNIGHT_CENTER_BONUS,
+            KNIGHT_CENTER_SQUARES,
+            MOBILITY_BONUS,
+            PAWN_ADVANCE_WEIGHT,
+            PIECE_VALUES,
+            _pawn_advancement_bonus,
+        )
 
         if self._board.is_game_over():
             if self._board.is_checkmate():
@@ -208,17 +219,54 @@ class ChessGame:
             # Stalemate or draw
             return 0
 
-        # Use a quick evaluation if depth is 0, otherwise use minimax
-        if depth <= 0:
-            # Quick static evaluation from white's perspective
-            # If it's white's turn, evaluate directly; if black's turn, negate
-            score = evaluate(self._board)
-            return score if self._board.turn == chess.WHITE else -score
-        else:
-            # Use minimax for deeper evaluation
-            score, _ = negamax(
-                self._board.copy(), depth, -1_000_000, 1_000_000, 0.0, None
-            )
-            # Negamax returns score from side-to-move's perspective
-            # Convert to white's perspective
-            return score if self._board.turn == chess.WHITE else -score
+        # Neutral evaluation from white's perspective (not biased by whose turn it is)
+        score = 0
+
+        # Material and positional evaluation
+        for square in chess.SQUARES:
+            piece = self._board.piece_at(square)
+            if piece is None:
+                continue
+            value = PIECE_VALUES[piece.piece_type]
+            if piece.color == chess.WHITE:
+                score += value
+                if square in CENTER_SQUARES:
+                    score += CENTER_BONUS
+                if piece.piece_type == chess.PAWN:
+                    score += (
+                        _pawn_advancement_bonus(square, piece.color)
+                        * PAWN_ADVANCE_WEIGHT
+                    )
+                if piece.piece_type == chess.KNIGHT and square in KNIGHT_CENTER_SQUARES:
+                    score += KNIGHT_CENTER_BONUS
+            else:  # black piece
+                score -= value
+                if square in CENTER_SQUARES:
+                    score -= CENTER_BONUS
+                if piece.piece_type == chess.PAWN:
+                    score -= (
+                        _pawn_advancement_bonus(square, piece.color)
+                        * PAWN_ADVANCE_WEIGHT
+                    )
+                if piece.piece_type == chess.KNIGHT and square in KNIGHT_CENTER_SQUARES:
+                    score -= KNIGHT_CENTER_BONUS
+
+        # Mobility: average from both perspectives to avoid turn bias
+        # Evaluate mobility for both sides
+        white_moves = len(list(self._board.legal_moves))
+        # Temporarily switch turn to get black's moves
+        self._board.turn = not self._board.turn
+        black_moves = len(list(self._board.legal_moves))
+        self._board.turn = not self._board.turn  # switch back
+        # Mobility advantage: white's moves minus black's moves
+        mobility_diff = (white_moves - black_moves) * MOBILITY_BONUS
+        score += mobility_diff
+
+        # Check: if white is in check, that's bad for white
+        if self._board.is_check():
+            if self._board.turn == chess.WHITE:
+                score -= CHECK_BONUS
+            else:
+                score += CHECK_BONUS
+
+        return score
