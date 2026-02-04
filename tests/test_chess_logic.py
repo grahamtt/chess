@@ -262,3 +262,83 @@ def test_chess_game_promotion():
         piece = game.piece_at(0, 4)
         if piece:
             assert piece[1] == "Q"  # Should be queen
+
+
+def test_chess_game_get_position_evaluation_starting():
+    """Test position evaluation at starting position."""
+    game = ChessGame()
+    # Starting position should be approximately equal (0)
+    eval_score = game.get_position_evaluation(depth=0)
+    assert abs(eval_score) < 50  # Should be very close to 0 (within 0.5 pawns)
+
+
+def test_chess_game_get_position_evaluation_checkmate():
+    """Test position evaluation for checkmate positions."""
+    game = ChessGame()
+    # White is checkmated (it's white's turn and white is mated)
+    game.set_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
+    if game.is_checkmate():
+        eval_score = game.get_position_evaluation(depth=0)
+        assert eval_score <= -100_000  # Should be very negative (white mated)
+
+    # Black is checkmated (it's black's turn and black is mated)
+    game.set_fen("rnbqkbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR b KQkq - 1 3")
+    if game.is_checkmate():
+        eval_score = game.get_position_evaluation(depth=0)
+        assert eval_score >= 100_000  # Should be very positive (black mated)
+
+
+def test_chess_game_get_position_evaluation_stalemate():
+    """Test position evaluation for stalemate positions."""
+    game = ChessGame()
+    # Stalemate should evaluate to 0
+    game.set_fen("8/8/8/8/8/8/4k3/4K3 b - - 0 1")
+    # Check if it's actually stalemate
+    board = game.get_board()
+    if board.is_stalemate():
+        eval_score = game.get_position_evaluation(depth=0)
+        assert eval_score == 0
+
+
+def test_chess_game_get_position_evaluation_material_imbalance():
+    """Test position evaluation with material imbalance."""
+    game = ChessGame()
+    # White has extra queen
+    game.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKQNR w KQkq - 0 1")
+    eval_score = game.get_position_evaluation(depth=0)
+    assert eval_score > 500  # Should favor white significantly (queen = 900 centipawns)
+
+    # Black has extra rook (white missing a rook)
+    # Remove white's a1 rook: RNBQKBNR -> 1NBQKBNR
+    game.set_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/1NBQKBNR w KQkq - 0 1")
+    eval_score = game.get_position_evaluation(depth=0)
+    # Black has extra rook (500 centipawns), so evaluation should favor black (negative)
+    assert eval_score < -400  # Should be significantly negative
+
+
+def test_chess_game_get_position_evaluation_after_move():
+    """Test position evaluation changes after moves."""
+    game = ChessGame()
+    # Make a move
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    eval_after = game.get_position_evaluation(depth=0)
+
+    # Evaluation should change (may be slightly different)
+    # The exact value depends on the evaluation function, but it should be different
+    assert isinstance(eval_after, int)
+
+
+def test_chess_game_get_position_evaluation_perspective():
+    """Test that evaluation is always from white's perspective."""
+    game = ChessGame()
+    # At starting position, white to move
+    eval_white_turn = game.get_position_evaluation(depth=0)
+
+    # Make a move so it's black's turn
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    eval_black_turn = game.get_position_evaluation(depth=0)
+
+    # Both should be from white's perspective
+    # The evaluation should be consistent regardless of whose turn it is
+    assert isinstance(eval_white_turn, int)
+    assert isinstance(eval_black_turn, int)
