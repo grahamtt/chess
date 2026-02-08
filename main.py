@@ -834,7 +834,11 @@ def main(page: ft.Page):
     )
 
     def do_new_game(_):
-        """Reset the game (called after confirmation)."""
+        """Reset the game (called after confirmation).
+
+        When a puzzle is active the current puzzle is restarted instead of
+        returning to a blank game.
+        """
         nonlocal \
             selected, \
             valid_moves, \
@@ -848,8 +852,54 @@ def main(page: ft.Page):
             elo_updated_this_game, \
             active_puzzle, \
             puzzle_move_index, \
+            puzzle_start_time, \
             puzzle_moves_made
         page.pop_dialog()
+
+        # If a puzzle is active, restart it instead of resetting to a new game
+        current_puzzle = active_puzzle
+        if current_puzzle is not None:
+            if not game.set_fen(current_puzzle.fen):
+                # Fallback: if the FEN is invalid somehow, do a normal reset
+                current_puzzle = None
+
+        if current_puzzle is not None:
+            # Restart the active puzzle
+            selected = None
+            valid_moves = []
+            hint_moves = []
+            elo_updated_this_game = False
+            active_puzzle = current_puzzle
+            puzzle_move_index = 0
+            puzzle_start_time = time.monotonic()
+            puzzle_moves_made = 0
+            clock_enabled = current_puzzle.clock_enabled
+            clock_started = current_puzzle.clock_enabled and game.can_undo()
+            game_over = (
+                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+            )
+            # Show puzzle info in status
+            if current_puzzle.objective != PuzzleObjective.FREE_PLAY:
+                diff_label = current_puzzle.difficulty_label.value
+                msg = f"Puzzle: {current_puzzle.name} ({diff_label} — {current_puzzle.difficulty_rating})"
+                if current_puzzle.num_player_moves > 1:
+                    msg += f" — Find {current_puzzle.num_player_moves} moves"
+                message.current.value = msg
+                message.current.color = ft.Colors.PURPLE
+            else:
+                update_status()
+            update_clock_display()
+            save_current_state()
+            refresh_board()
+            update_undo_button()
+            update_history()
+            update_evaluation_bar()
+            update_opening_explorer()
+            update_side_panel_visibility()
+            page.update()
+            return
+
+        # Normal new game reset (no puzzle active)
         game.reset()
         selected = None
         valid_moves = []
@@ -858,6 +908,7 @@ def main(page: ft.Page):
         elo_updated_this_game = False
         active_puzzle = None
         puzzle_move_index = 0
+        puzzle_start_time = time.monotonic()
         puzzle_moves_made = 0
         clock_started = False
         if time_control_secs is None:
@@ -1238,21 +1289,30 @@ def main(page: ft.Page):
 
     undo_btn = ft.Ref[ft.IconButton]()
 
-    new_game_dialog = ft.AlertDialog(
-        title=ft.Text("New game"),
-        content=ft.Text("Start a new game? The current game will be lost."),
-        actions=[
-            ft.TextButton(
-                "Cancel",
-                on_click=lambda e: page.pop_dialog(),
-            ),
-            ft.TextButton("New game", on_click=do_new_game),
-        ],
-        open=False,
-    )
-
     def show_new_game_dialog(_):
-        page.show_dialog(new_game_dialog)
+        if active_puzzle is not None:
+            title = "Restart puzzle"
+            content = (
+                f'Restart "{active_puzzle.name}"? Your current progress will be lost.'
+            )
+            confirm_label = "Restart"
+        else:
+            title = "New game"
+            content = "Start a new game? The current game will be lost."
+            confirm_label = "New game"
+        dialog = ft.AlertDialog(
+            title=ft.Text(title),
+            content=ft.Text(content),
+            actions=[
+                ft.TextButton(
+                    "Cancel",
+                    on_click=lambda e: page.pop_dialog(),
+                ),
+                ft.TextButton(confirm_label, on_click=do_new_game),
+            ],
+            open=False,
+        )
+        page.show_dialog(dialog)
 
     def load_puzzle_by_id(puzzle_id: str):
         """Load a puzzle by its unique ID."""
