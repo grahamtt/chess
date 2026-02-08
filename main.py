@@ -11,9 +11,13 @@ from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from lichess import (
     LichessDailyPuzzle,
+    LichessTvFenEvent,
+    LichessTvGame,
     fetch_daily_puzzle,
+    fetch_tv_channels,
     format_themes,
     get_solution_san,
+    stream_tv_feed,
 )
 from puzzles import (
     PUZZLE_DATABASE,
@@ -83,7 +87,8 @@ def main(page: ft.Page):
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
 
-    # Refs for side-panel sections (toggled visible/hidden during puzzles)
+    # Refs for side-panel sections (toggled visible/hidden during puzzles/TV)
+    history_panel_ref = ft.Ref[ft.Container]()
     elo_section_ref = ft.Ref[ft.Column]()
     eval_section_ref = ft.Ref[ft.Column]()
     opening_section_ref = ft.Ref[ft.Column]()
@@ -136,6 +141,9 @@ def main(page: ft.Page):
     puzzle_start_time = 0.0  # When the puzzle was loaded
     puzzle_moves_made = 0  # Total moves made by the player in this attempt
     puzzle_progress: PuzzleProgress = load_puzzle_progress()
+
+    # --- Lichess TV state (declared early so closures can see it) ---
+    tv_watching = False  # True when streaming Lichess TV
 
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
@@ -231,6 +239,8 @@ def main(page: ft.Page):
         return player_bots.get(black_player)
 
     def is_human_turn() -> bool:
+        if tv_watching:
+            return False  # No interaction while watching Lichess TV
         if game.turn == "white":
             return white_player == "human"
         return black_player == "human"
@@ -241,10 +251,15 @@ def main(page: ft.Page):
     def get_board_flipped() -> bool:
         """Determine if the board should be shown from black's perspective.
 
+        - Lichess TV: use the orientation provided by the server.
         - Human vs Computer: permanently orient for the human player.
         - Human vs Human: orient for the player whose turn it is.
         - Bot vs Bot: always show from white's perspective.
         """
+        if tv_watching:
+            # Use the server-recommended orientation (fixed for the game)
+            return tv_game.orientation == "black" if tv_game else False
+
         white_is_human = white_player == "human"
         black_is_human = black_player == "human"
 
@@ -864,6 +879,9 @@ def main(page: ft.Page):
             puzzle_start_time, \
             puzzle_moves_made
         page.pop_dialog()
+        # Stop TV stream if active
+        if tv_watching:
+            _stop_tv_stream()
 
         # If a puzzle is active, restart it instead of resetting to a new game
         current_puzzle = active_puzzle
@@ -1149,15 +1167,25 @@ def main(page: ft.Page):
             page.update(undo_btn.current)
 
     def update_side_panel_visibility():
-        """Show or hide side-panel sections based on whether a puzzle is active.
+        """Show or hide side-panel sections based on current mode.
 
-        During puzzles, ELO rating, evaluation bar, and opening explorer are
-        hidden because they are irrelevant to the puzzle-solving experience.
+        - Lichess TV: hide the entire side panel (rating, eval, opening, moves).
+        - Puzzles: hide ELO, evaluation, and opening sections only.
+        - Normal play: show everything.
         """
+        # Hide entire side panel in TV mode
+        if history_panel_ref.current is not None:
+            history_panel_ref.current.visible = not tv_watching
+            try:
+                history_panel_ref.current.update()
+            except RuntimeError:
+                pass
+
+        # Hide individual sections during puzzles
         in_puzzle = active_puzzle is not None
         for ref in (elo_section_ref, eval_section_ref, opening_section_ref):
             if ref.current is not None:
-                ref.current.visible = not in_puzzle
+                ref.current.visible = not in_puzzle and not tv_watching
                 try:
                     ref.current.update()
                 except RuntimeError:
@@ -1459,6 +1487,347 @@ def main(page: ft.Page):
 
     # Import UNLOCK_MARGIN for display
     from puzzle_progress import UNLOCK_MARGIN
+
+    # ------------------------------------------------------------------
+    # Lichess TV state (tv_watching declared earlier with other state vars)
+    # ------------------------------------------------------------------
+    tv_game: LichessTvGame | None = None  # Current TV game metadata
+    tv_stop_requested = False  # Signal to stop the streaming background task
+    tv_channel: str | None = None  # Selected channel name, or None for default
+
+    def _stop_tv_stream():
+        """Stop the Lichess TV stream if running."""
+        nonlocal tv_watching, tv_stop_requested, tv_game, tv_channel
+        tv_stop_requested = True
+        tv_watching = False
+        tv_game = None
+        tv_channel = None
+
+    def _update_tv_board(fen: str, last_move_uci: str, wc: int, bc: int):
+        """Apply a TV position update to the board display."""
+        nonlocal game_over
+        if not tv_watching:
+            return
+        if not game.set_fen(fen):
+            return
+        game_over = (
+            game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+        )
+        # Build status message with clock info
+        wm = wc // 60
+        ws = wc % 60
+        bm = bc // 60
+        bs = bc % 60
+        if tv_game:
+            wp = tv_game.white_player
+            bp = tv_game.black_player
+            w_name = wp.user_name if wp else "White"
+            b_name = bp.user_name if bp else "Black"
+            w_rating = f" ({wp.rating})" if wp else ""
+            b_rating = f" ({bp.rating})" if bp else ""
+        else:
+            w_name, b_name = "White", "Black"
+            w_rating = b_rating = ""
+        lm_str = f"  Last: {last_move_uci}" if last_move_uci else ""
+        message.current.value = (
+            f"Lichess TV — {w_name}{w_rating} {wm}:{ws:02d}"
+            f" vs {b_name}{b_rating} {bm}:{bs:02d}{lm_str}"
+        )
+        message.current.color = ft.Colors.TEAL
+        refresh_board()
+        page.update()
+
+    def _start_tv_game(game_meta: LichessTvGame):
+        """Initialize the board for a new TV game."""
+        nonlocal tv_game, game_over, selected, valid_moves, hint_moves
+        nonlocal clock_enabled, clock_started, active_puzzle, elo_updated_this_game
+        nonlocal puzzle_move_index, puzzle_start_time, puzzle_moves_made
+        tv_game = game_meta
+        if not game.set_fen(game_meta.fen):
+            return
+        selected = None
+        valid_moves = []
+        hint_moves = []
+        elo_updated_this_game = False
+        active_puzzle = None
+        puzzle_move_index = 0
+        puzzle_start_time = 0.0
+        puzzle_moves_made = 0
+        clock_enabled = False
+        clock_started = False
+        game_over = (
+            game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+        )
+
+        wp = game_meta.white_player
+        bp = game_meta.black_player
+        w_name = wp.user_name if wp else "White"
+        b_name = bp.user_name if bp else "Black"
+        w_rating = f" ({wp.rating})" if wp else ""
+        b_rating = f" ({bp.rating})" if bp else ""
+        message.current.value = f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
+        message.current.color = ft.Colors.TEAL
+        update_clock_display()
+        refresh_board()
+        update_undo_button()
+        update_history()
+        update_side_panel_visibility()
+        page.update()
+
+    async def _run_tv_stream():
+        """Background task that streams Lichess TV events and updates the board."""
+        nonlocal tv_watching, tv_stop_requested
+        import threading
+
+        tv_stop_requested = False
+        tv_watching = True
+        selected_channel = tv_channel  # capture at start
+
+        def _stream_in_thread(events_out: list, stop_flag: list):
+            """Run the blocking stream generator in a background thread."""
+            try:
+                for event in stream_tv_feed(channel=selected_channel):
+                    if stop_flag[0]:
+                        break
+                    events_out.append(event)
+            except Exception:
+                pass
+
+        events: list = []
+        stop_flag = [False]
+        thread = threading.Thread(
+            target=_stream_in_thread,
+            args=(events, stop_flag),
+            daemon=True,
+        )
+        thread.start()
+
+        processed = 0
+        try:
+            while tv_watching and not tv_stop_requested:
+                await asyncio.sleep(0.3)
+                # Process any new events
+                while processed < len(events):
+                    if tv_stop_requested or not tv_watching:
+                        break
+                    event = events[processed]
+                    processed += 1
+                    if isinstance(event, LichessTvGame):
+                        _start_tv_game(event)
+                    elif isinstance(event, LichessTvFenEvent):
+                        _update_tv_board(
+                            event.fen,
+                            event.last_move_uci,
+                            event.white_clock,
+                            event.black_clock,
+                        )
+                if not thread.is_alive():
+                    break
+        finally:
+            stop_flag[0] = True
+            tv_watching = False
+            thread.join(timeout=2)
+
+    def _do_start_tv(_, channel_name: str | None = None):
+        """Start watching Lichess TV (called from UI)."""
+        nonlocal tv_watching, white_player, black_player, tv_channel
+        page.pop_dialog()
+        if tv_watching:
+            return
+        # Set both players to "human" so no bot intervenes
+        white_player = "human"
+        black_player = "human"
+        tv_channel = channel_name
+        label = channel_name or "Top Rated"
+        message.current.value = f"Connecting to Lichess TV ({label})…"
+        message.current.color = ft.Colors.TEAL
+        page.update()
+        page.run_task(_run_tv_stream)
+
+    def _do_stop_tv(_=None):
+        """Stop watching Lichess TV."""
+        _stop_tv_stream()
+        message.current.value = "Lichess TV stopped."
+        message.current.color = ft.Colors.BLACK
+        page.update()
+
+    def show_tv_dialog(_):
+        """Show the Lichess TV dialog with channel info and start/stop controls."""
+        # If already watching, offer to stop
+        if tv_watching:
+            stop_dialog = ft.AlertDialog(
+                title=ft.Text("Lichess TV"),
+                content=ft.Text("Currently watching Lichess TV. Stop streaming?"),
+                actions=[
+                    ft.TextButton(
+                        "Keep Watching",
+                        on_click=lambda e: page.pop_dialog(),
+                    ),
+                    ft.TextButton(
+                        "Stop",
+                        on_click=lambda e: (page.pop_dialog(), _do_stop_tv()),
+                    ),
+                ],
+                open=False,
+            )
+            page.show_dialog(stop_dialog)
+            return
+
+        # Fetch channels for display
+        if message.current is not None:
+            message.current.value = "Fetching Lichess TV channels…"
+            message.current.color = ft.Colors.TEAL
+            page.update()
+
+        channels = fetch_tv_channels()
+
+        if channels is None:
+            if message.current is not None:
+                message.current.value = (
+                    "Could not fetch TV channels. Check your internet connection."
+                )
+                message.current.color = ft.Colors.RED
+                page.update()
+            return
+
+        # Reset status
+        if message.current is not None:
+            message.current.value = f"{game.turn.capitalize()} to move."
+            message.current.color = ft.Colors.BLACK
+
+        # --- Selectable channel list with highlight ---
+        # selected_channel[0] holds the currently selected channel name (None = Top Rated)
+        selected_channel: list[str | None] = [None]
+        channel_list_column = ft.Column(
+            scroll=ft.ScrollMode.AUTO, tight=True, spacing=0
+        )
+
+        def _build_channel_tiles():
+            """Rebuild channel tiles with current selection highlight."""
+            channel_list_column.controls.clear()
+
+            # "Top Rated" entry (default — uses the main /api/tv/feed)
+            is_top = selected_channel[0] is None
+            channel_list_column.controls.append(
+                ft.Container(
+                    content=ft.ListTile(
+                        leading=ft.Icon(
+                            ft.Icons.STAR,
+                            color=ft.Colors.TEAL
+                            if is_top
+                            else ft.Colors.ON_SURFACE_VARIANT,
+                            size=20,
+                        ),
+                        title=ft.Text(
+                            "Top Rated",
+                            size=14,
+                            weight=ft.FontWeight.W_600
+                            if is_top
+                            else ft.FontWeight.W_500,
+                            color=ft.Colors.TEAL if is_top else ft.Colors.ON_SURFACE,
+                        ),
+                        subtitle=ft.Text(
+                            "The highest-rated game currently in progress",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        on_click=lambda e: _select_channel(None),
+                    ),
+                    bgcolor=ft.Colors.TEAL_50 if is_top else None,
+                    border_radius=8,
+                )
+            )
+
+            for ch in channels:
+                is_sel = selected_channel[0] == ch.channel_name
+                channel_list_column.controls.append(
+                    ft.Container(
+                        content=ft.ListTile(
+                            leading=ft.Icon(
+                                ft.Icons.LIVE_TV,
+                                color=ft.Colors.TEAL
+                                if is_sel
+                                else ft.Colors.ON_SURFACE_VARIANT,
+                                size=20,
+                            ),
+                            title=ft.Text(
+                                ch.channel_name,
+                                size=14,
+                                weight=ft.FontWeight.W_600
+                                if is_sel
+                                else ft.FontWeight.W_500,
+                                color=ft.Colors.TEAL
+                                if is_sel
+                                else ft.Colors.ON_SURFACE,
+                            ),
+                            subtitle=ft.Text(
+                                f"{ch.user_name} ({ch.rating})"
+                                if ch.user_name
+                                else "—",
+                                size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                            on_click=lambda e, name=ch.channel_name: _select_channel(
+                                name
+                            ),
+                        ),
+                        bgcolor=ft.Colors.TEAL_50 if is_sel else None,
+                        border_radius=8,
+                    )
+                )
+
+        def _select_channel(name: str | None):
+            selected_channel[0] = name
+            _build_channel_tiles()
+            try:
+                channel_list_column.update()
+            except RuntimeError:
+                pass
+
+        # Initial build
+        _build_channel_tiles()
+
+        content = ft.Column(
+            [
+                ft.Container(
+                    content=ft.Text(
+                        "Select a channel and click Watch to stream a live game. "
+                        "The board will update in real time as moves are made.",
+                        size=13,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    ),
+                    padding=ft.padding.only(bottom=8),
+                ),
+                ft.Divider(height=1),
+                ft.Container(
+                    content=channel_list_column,
+                    height=280,
+                ),
+            ],
+            tight=True,
+            spacing=8,
+            width=400,
+        )
+
+        def _on_watch(e):
+            _do_start_tv(e, channel_name=selected_channel[0])
+
+        tv_dialog = ft.AlertDialog(
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.LIVE_TV, color=ft.Colors.TEAL),
+                    ft.Text("Lichess TV", weight=ft.FontWeight.W_600),
+                ],
+                spacing=8,
+            ),
+            content=content,
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
+                ft.TextButton("Watch", on_click=_on_watch),
+            ],
+            open=False,
+        )
+        page.show_dialog(tv_dialog)
 
     # ------------------------------------------------------------------
     # Lichess Daily Puzzle
@@ -1981,6 +2350,7 @@ def main(page: ft.Page):
     )
 
     history_panel = ft.Container(
+        ref=history_panel_ref,
         content=ft.Column(
             [
                 # --- ELO Rating section (hidden during puzzles) ---
@@ -2164,6 +2534,11 @@ def main(page: ft.Page):
         center_title=True,
         bgcolor=ft.Colors.SURFACE,
         actions=[
+            ft.IconButton(
+                icon=ft.Icons.LIVE_TV,
+                tooltip="Watch Lichess TV",
+                on_click=show_tv_dialog,
+            ),
             ft.IconButton(
                 icon=ft.Icons.MENU_BOOK,
                 tooltip="Puzzles & Scenarios",
