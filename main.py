@@ -7,6 +7,7 @@ import time
 
 import flet as ft
 from chess_logic import ChessGame
+from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from puzzles import PUZZLES
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
@@ -38,6 +39,9 @@ def main(page: ft.Page):
     black_clock_text = ft.Ref[ft.Text]()
     eval_bar_container = ft.Ref[ft.Container]()
     eval_text = ft.Ref[ft.Text]()
+    opening_name_text = ft.Ref[ft.Text]()
+    opening_desc_text = ft.Ref[ft.Text]()
+    common_moves_column = ft.Ref[ft.Column]()
 
     # Game clock: each player has fixed time; runs down on their turn
     time_control_secs = 300  # 5 min default; set by dropdown for next game
@@ -301,6 +305,7 @@ def main(page: ft.Page):
                 update_undo_button()
                 update_history()
                 update_evaluation_bar()
+                update_opening_explorer()
                 refresh_board()
                 page.update()
                 if not game_over and not is_human_turn():
@@ -358,6 +363,7 @@ def main(page: ft.Page):
         update_undo_button()
         update_history()
         update_evaluation_bar()
+        update_opening_explorer()
         refresh_board()
         page.update()
 
@@ -386,6 +392,7 @@ def main(page: ft.Page):
                 update_undo_button()
                 update_history()
                 update_evaluation_bar()
+                update_opening_explorer()
                 refresh_board()
                 page.update()
                 if game_over:
@@ -498,6 +505,7 @@ def main(page: ft.Page):
         update_undo_button()
         update_history()
         update_evaluation_bar()
+        update_opening_explorer()
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
@@ -526,6 +534,7 @@ def main(page: ft.Page):
         update_undo_button()
         update_history()
         update_evaluation_bar()
+        update_opening_explorer()
         page.update()
 
     def update_history():
@@ -536,6 +545,80 @@ def main(page: ft.Page):
             history_text.current.update()
         except RuntimeError:
             pass  # control not on page yet
+
+    def update_opening_explorer():
+        """Update the opening explorer with current position info."""
+        opening_name, opening_desc = get_opening_name(game.get_board())
+
+        # Update opening name
+        if opening_name_text.current is not None:
+            if opening_name:
+                opening_name_text.current.value = opening_name
+                opening_name_text.current.color = ft.Colors.PURPLE
+                opening_name_text.current.weight = ft.FontWeight.W_600
+            else:
+                opening_name_text.current.value = "No opening identified"
+                opening_name_text.current.color = ft.Colors.ON_SURFACE_VARIANT
+                opening_name_text.current.weight = ft.FontWeight.NORMAL
+            try:
+                opening_name_text.current.update()
+            except RuntimeError:
+                pass
+
+        # Update opening description
+        if opening_desc_text.current is not None:
+            if opening_desc:
+                opening_desc_text.current.value = opening_desc
+                opening_desc_text.current.color = ft.Colors.ON_SURFACE_VARIANT
+            else:
+                opening_desc_text.current.value = ""
+            try:
+                opening_desc_text.current.update()
+            except RuntimeError:
+                pass
+
+        # Update common moves
+        if common_moves_column.current is not None:
+            common_moves = get_common_moves(game.get_board())
+            common_moves_column.current.controls.clear()
+
+            if common_moves:
+                # Show top 5 moves
+                for move, san, score in common_moves[:5]:
+                    # Create a visual indicator for move popularity
+                    stars = "★" * min(score // 2, 5)
+                    move_text = f"{san} {stars}"
+
+                    # Color based on score
+                    if score >= 8:
+                        color = ft.Colors.GREEN
+                    elif score >= 5:
+                        color = ft.Colors.BLUE
+                    else:
+                        color = ft.Colors.ON_SURFACE_VARIANT
+
+                    move_control = ft.Text(
+                        move_text,
+                        size=12,
+                        color=color,
+                        weight=ft.FontWeight.W_500
+                        if score >= 7
+                        else ft.FontWeight.NORMAL,
+                    )
+                    common_moves_column.current.controls.append(move_control)
+            else:
+                common_moves_column.current.controls.append(
+                    ft.Text(
+                        "No moves available",
+                        size=12,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    )
+                )
+
+            try:
+                common_moves_column.current.update()
+            except RuntimeError:
+                pass
 
     def format_evaluation(centipawns: int) -> str:
         """Format evaluation in a human-readable way."""
@@ -786,6 +869,7 @@ def main(page: ft.Page):
         update_undo_button()
         update_history()
         update_evaluation_bar()
+        update_opening_explorer()
         page.update()
 
     def make_puzzle_tile(index: int, name: str, desc: str):
@@ -901,6 +985,39 @@ def main(page: ft.Page):
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 ft.Divider(height=1),
+                ft.Text("Opening", size=16, weight=ft.FontWeight.W_600),
+                ft.Column(
+                    [
+                        ft.Text(
+                            ref=opening_name_text,
+                            value="No opening identified",
+                            size=14,
+                            weight=ft.FontWeight.NORMAL,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Text(
+                            ref=opening_desc_text,
+                            value="",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Text(
+                            "Common moves:",
+                            size=12,
+                            weight=ft.FontWeight.W_500,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Column(
+                            ref=common_moves_column,
+                            controls=[],
+                            spacing=2,
+                            tight=True,
+                        ),
+                    ],
+                    spacing=4,
+                    tight=True,
+                ),
+                ft.Divider(height=1),
                 ft.Text("Moves", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     controls=[
@@ -994,6 +1111,7 @@ def main(page: ft.Page):
     refresh_board()
     update_history()
     update_evaluation_bar()
+    update_opening_explorer()
     update_clock_display()
     page.run_task(run_clock)
 
