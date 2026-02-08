@@ -264,6 +264,94 @@ def test_chess_game_promotion():
             assert piece[1] == "Q"  # Should be queen
 
 
+def test_chess_game_is_promotion_move():
+    """Test is_promotion_move detects pawn promotions correctly."""
+    game = ChessGame()
+    # Set up a position where white pawn on e7 can promote
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    # e7 to e8 is a promotion
+    assert game.is_promotion_move(1, 4, 0, 4)
+
+    # Regular pawn move is not a promotion
+    game.set_fen("8/8/8/8/8/8/4P3/4K3 w - - 0 1")
+    assert not game.is_promotion_move(6, 4, 5, 4)  # e2-e3
+    assert not game.is_promotion_move(6, 4, 4, 4)  # e2-e4
+
+    # No legal move at all (empty square)
+    game.set_fen("8/8/8/8/8/8/4P3/4K3 w - - 0 1")
+    assert not game.is_promotion_move(3, 3, 2, 3)  # no piece there
+
+
+def test_chess_game_is_promotion_move_black():
+    """Test is_promotion_move for black pawn promotions."""
+    game = ChessGame()
+    # Black pawn on e2 can promote to e1
+    game.set_fen("4K3/8/8/8/8/8/4p3/8 b - - 0 1")
+    assert game.is_promotion_move(6, 4, 7, 4)  # e2-e1
+
+    # Black pawn on e7 is not a promotion
+    game.set_fen("4K3/4p3/8/8/8/8/8/8 b - - 0 1")
+    assert not game.is_promotion_move(1, 4, 2, 4)  # e7-e6
+
+
+def test_chess_game_is_promotion_move_capture():
+    """Test is_promotion_move for promotion by capture."""
+    game = ChessGame()
+    # White pawn on d7, black rook on e8: d7xe8 is a promotion capture
+    game.set_fen("4r3/3P4/8/8/8/8/8/4K3 w - - 0 1")
+    assert game.is_promotion_move(1, 3, 0, 4)  # d7xe8
+
+
+def test_chess_game_make_move_with_promotion_queen():
+    """Test make_move with explicit queen promotion."""
+    game = ChessGame()
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    assert game.make_move(1, 4, 0, 4, promotion=chess.QUEEN)
+    piece = game.piece_at(0, 4)
+    assert piece is not None
+    assert piece[1] == "Q"
+
+
+def test_chess_game_make_move_with_promotion_rook():
+    """Test make_move with explicit rook promotion."""
+    game = ChessGame()
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    assert game.make_move(1, 4, 0, 4, promotion=chess.ROOK)
+    piece = game.piece_at(0, 4)
+    assert piece is not None
+    assert piece[1] == "R"
+
+
+def test_chess_game_make_move_with_promotion_bishop():
+    """Test make_move with explicit bishop promotion."""
+    game = ChessGame()
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    assert game.make_move(1, 4, 0, 4, promotion=chess.BISHOP)
+    piece = game.piece_at(0, 4)
+    assert piece is not None
+    assert piece[1] == "B"
+
+
+def test_chess_game_make_move_with_promotion_knight():
+    """Test make_move with explicit knight promotion."""
+    game = ChessGame()
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    assert game.make_move(1, 4, 0, 4, promotion=chess.KNIGHT)
+    piece = game.piece_at(0, 4)
+    assert piece is not None
+    assert piece[1] == "N"
+
+
+def test_chess_game_make_move_promotion_default_queen():
+    """Test that make_move without promotion parameter defaults to queen."""
+    game = ChessGame()
+    game.set_fen("8/4P3/8/8/8/8/8/4k3 w - - 0 1")
+    assert game.make_move(1, 4, 0, 4)  # No promotion specified
+    piece = game.piece_at(0, 4)
+    assert piece is not None
+    assert piece[1] == "Q"  # Should default to queen
+
+
 def test_chess_game_get_position_evaluation_starting():
     """Test position evaluation at starting position."""
     game = ChessGame()

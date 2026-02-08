@@ -428,6 +428,169 @@ def main(page: ft.Page):
         is_light = (row + col) % 2 == 0
         return LIGHT_SQUARE if is_light else DARK_SQUARE
 
+    def execute_human_move(from_row, from_col, to_row, to_col, promotion=None):
+        """Execute a validated human move, optionally with a specific promotion piece.
+
+        Args:
+            from_row, from_col: Source square (UI coordinates).
+            to_row, to_col: Destination square (UI coordinates).
+            promotion: chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, or None.
+        """
+        nonlocal selected, valid_moves, hint_moves, game_over
+        nonlocal active_puzzle, puzzle_move_index, puzzle_moves_made
+
+        import chess as _chess
+
+        from_sq = _chess.square(from_col, 7 - from_row)
+        to_sq = _chess.square(to_col, 7 - to_row)
+        # Build UCI string for puzzle validation
+        board = game.get_board()
+        piece = board.piece_at(from_sq)
+        is_promo = (
+            piece is not None
+            and piece.piece_type == _chess.PAWN
+            and (
+                _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
+            )
+        )
+        uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
+        if is_promo:
+            promo_map = {
+                _chess.QUEEN: "q",
+                _chess.ROOK: "r",
+                _chess.BISHOP: "b",
+                _chess.KNIGHT: "n",
+            }
+            uci_move += promo_map.get(promotion, "q")
+
+        # --- Puzzle validation ---
+        if (
+            active_puzzle
+            and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+        ):
+            puzzle_moves_made += 1
+            if not active_puzzle.is_player_move_correct(
+                puzzle_move_index, uci_move
+            ):
+                # Wrong move — puzzle failed
+                handle_puzzle_failure()
+                selected = None
+                valid_moves = []
+                hint_moves = []
+                refresh_board()
+                page.update()
+                return
+
+        game.make_move(from_row, from_col, to_row, to_col, promotion=promotion)
+        selected = None
+        valid_moves = []
+        hint_moves = []  # Clear hints after making a move
+        deduct_move_time_and_check_game_over()
+        update_status()
+        update_undo_button()
+        update_history()
+        update_evaluation_bar()
+        update_opening_explorer()
+        save_current_state()
+        refresh_board()
+        page.update()
+
+        # --- Puzzle completion check ---
+        if (
+            active_puzzle
+            and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+        ):
+            if active_puzzle.is_complete_after_player_move(puzzle_move_index):
+                handle_puzzle_completion()
+                page.update()
+                return
+            # Play opponent's automatic response
+            opponent_uci = active_puzzle.get_opponent_response(
+                puzzle_move_index
+            )
+            puzzle_move_index += 1
+            if opponent_uci:
+                page.run_task(play_puzzle_opponent_move, opponent_uci)
+                return
+
+        if not game_over and not is_human_turn():
+            page.run_task(bot_move_after_human)
+
+    def show_promotion_dialog(from_row, from_col, to_row, to_col):
+        """Show a dialog for the player to choose a pawn promotion piece."""
+        import chess as _chess
+
+        color = game.turn  # "white" or "black"
+
+        pieces = [
+            (_chess.QUEEN, "Q", "Queen"),
+            (_chess.ROOK, "R", "Rook"),
+            (_chess.BISHOP, "B", "Bishop"),
+            (_chess.KNIGHT, "N", "Knight"),
+        ]
+
+        def on_piece_selected(piece_type):
+            def handler(e):
+                page.pop_dialog()
+                execute_human_move(
+                    from_row, from_col, to_row, to_col, promotion=piece_type
+                )
+            return handler
+
+        def on_cancel(e):
+            nonlocal selected, valid_moves
+            page.pop_dialog()
+            selected = None
+            valid_moves = []
+            refresh_board()
+            page.update()
+
+        piece_controls = []
+        for piece_type, piece_char, piece_name in pieces:
+            svg = get_svg(color, piece_char)
+            piece_controls.append(
+                ft.GestureDetector(
+                    on_tap=on_piece_selected(piece_type),
+                    content=ft.Container(
+                        content=ft.Column(
+                            [
+                                ft.Image(
+                                    src=svg,
+                                    width=60,
+                                    height=60,
+                                    fit=ft.BoxFit.CONTAIN,
+                                ),
+                                ft.Text(
+                                    piece_name,
+                                    size=12,
+                                    text_align=ft.TextAlign.CENTER,
+                                    weight=ft.FontWeight.W_500,
+                                ),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=4,
+                        ),
+                        padding=12,
+                        border_radius=8,
+                        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                    ),
+                )
+            )
+
+        promo_dialog = ft.AlertDialog(
+            title=ft.Text("Promote pawn to:", weight=ft.FontWeight.W_600),
+            content=ft.Row(
+                piece_controls,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=12,
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=on_cancel),
+            ],
+            open=False,
+        )
+        page.show_dialog(promo_dialog)
+
     def build_square(row: int, col: int) -> ft.Container:
         cell = game.piece_at(row, col)
         bg = square_color(row, col)
@@ -480,77 +643,11 @@ def main(page: ft.Page):
                 refresh_board()
                 return
             if selected is not None and (row, col) in valid_moves:
-                # Determine the UCI move the player is making
-                import chess as _chess
-
-                from_sq = _chess.square(selected[1], 7 - selected[0])
-                to_sq = _chess.square(col, 7 - row)
-                # Check for promotion
-                board = game.get_board()
-                piece = board.piece_at(from_sq)
-                is_promo = (
-                    piece is not None
-                    and piece.piece_type == _chess.PAWN
-                    and (
-                        _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
-                    )
-                )
-                uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
-                if is_promo:
-                    uci_move += "q"  # Default queen promotion for puzzle checks
-
-                # --- Puzzle validation ---
-                if (
-                    active_puzzle
-                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
-                ):
-                    puzzle_moves_made += 1
-                    if not active_puzzle.is_player_move_correct(
-                        puzzle_move_index, uci_move
-                    ):
-                        # Wrong move — puzzle failed
-                        handle_puzzle_failure()
-                        selected = None
-                        valid_moves = []
-                        hint_moves = []
-                        refresh_board()
-                        page.update()
-                        return
-
-                game.make_move(selected[0], selected[1], row, col)
-                selected = None
-                valid_moves = []
-                hint_moves = []  # Clear hints after making a move
-                deduct_move_time_and_check_game_over()
-                update_status()
-                update_undo_button()
-                update_history()
-                update_evaluation_bar()
-                update_opening_explorer()
-                save_current_state()
-                refresh_board()
-                page.update()
-
-                # --- Puzzle completion check ---
-                if (
-                    active_puzzle
-                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
-                ):
-                    if active_puzzle.is_complete_after_player_move(puzzle_move_index):
-                        handle_puzzle_completion()
-                        page.update()
-                        return
-                    # Play opponent's automatic response
-                    opponent_uci = active_puzzle.get_opponent_response(
-                        puzzle_move_index
-                    )
-                    puzzle_move_index += 1
-                    if opponent_uci:
-                        page.run_task(play_puzzle_opponent_move, opponent_uci)
-                        return
-
-                if not game_over and not is_human_turn():
-                    page.run_task(bot_move_after_human)
+                # Check for pawn promotion — show dialog instead of auto-promoting
+                if game.is_promotion_move(selected[0], selected[1], row, col):
+                    show_promotion_dialog(selected[0], selected[1], row, col)
+                    return
+                execute_human_move(selected[0], selected[1], row, col)
                 return
             if selected is not None:
                 selected = None

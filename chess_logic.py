@@ -69,8 +69,28 @@ class ChessGame:
             if m.from_square == from_sq
         ]
 
-    def make_move(self, from_row: int, from_col: int, to_row: int, to_col: int) -> bool:
-        """Play the move if legal. Default to queen on promotion. Return True if moved."""
+    def is_promotion_move(
+        self, from_row: int, from_col: int, to_row: int, to_col: int
+    ) -> bool:
+        """Check if moving from (from_row, from_col) to (to_row, to_col) is a pawn promotion."""
+        from_sq = _ui_to_square(from_row, from_col)
+        to_sq = _ui_to_square(to_row, to_col)
+        candidates = [
+            m
+            for m in self._board.legal_moves
+            if m.from_square == from_sq and m.to_square == to_sq
+        ]
+        return any(m.promotion is not None for m in candidates)
+
+    def make_move(
+        self,
+        from_row: int,
+        from_col: int,
+        to_row: int,
+        to_col: int,
+        promotion: int | None = None,
+    ) -> bool:
+        """Play the move if legal. Uses specified promotion piece, or defaults to queen. Return True if moved."""
         from_sq = _ui_to_square(from_row, from_col)
         to_sq = _ui_to_square(to_row, to_col)
         candidates = [
@@ -80,10 +100,16 @@ class ChessGame:
         ]
         if not candidates:
             return False
-        move = next(
-            (m for m in candidates if getattr(m, "promotion", None) == chess.QUEEN),
-            candidates[0],
-        )
+        if promotion is not None:
+            move = next(
+                (m for m in candidates if m.promotion == promotion),
+                candidates[0],
+            )
+        else:
+            move = next(
+                (m for m in candidates if getattr(m, "promotion", None) == chess.QUEEN),
+                candidates[0],
+            )
         try:
             self._board.push(move)
         except AssertionError:
