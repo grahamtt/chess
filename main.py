@@ -549,7 +549,7 @@ def main(page: ft.Page):
     def update_opening_explorer():
         """Update the opening explorer with current position info."""
         opening_name, opening_desc = get_opening_name(game.get_board())
-        
+
         # Update opening name
         if opening_name_text.current is not None:
             if opening_name:
@@ -564,7 +564,7 @@ def main(page: ft.Page):
                 opening_name_text.current.update()
             except RuntimeError:
                 pass
-        
+
         # Update opening description
         if opening_desc_text.current is not None:
             if opening_desc:
@@ -576,19 +576,19 @@ def main(page: ft.Page):
                 opening_desc_text.current.update()
             except RuntimeError:
                 pass
-        
+
         # Update common moves
         if common_moves_column.current is not None:
             common_moves = get_common_moves(game.get_board())
             common_moves_column.current.controls.clear()
-            
+
             if common_moves:
                 # Show top 5 moves
                 for move, san, score in common_moves[:5]:
                     # Create a visual indicator for move popularity
                     stars = "★" * min(score // 2, 5)
                     move_text = f"{san} {stars}"
-                    
+
                     # Color based on score
                     if score >= 8:
                         color = ft.Colors.GREEN
@@ -596,19 +596,25 @@ def main(page: ft.Page):
                         color = ft.Colors.BLUE
                     else:
                         color = ft.Colors.ON_SURFACE_VARIANT
-                    
+
                     move_control = ft.Text(
                         move_text,
                         size=12,
                         color=color,
-                        weight=ft.FontWeight.W_500 if score >= 7 else ft.FontWeight.NORMAL,
+                        weight=ft.FontWeight.W_500
+                        if score >= 7
+                        else ft.FontWeight.NORMAL,
                     )
                     common_moves_column.current.controls.append(move_control)
             else:
                 common_moves_column.current.controls.append(
-                    ft.Text("No moves available", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+                    ft.Text(
+                        "No moves available",
+                        size=12,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    )
                 )
-            
+
             try:
                 common_moves_column.current.update()
             except RuntimeError:
@@ -995,7 +1001,12 @@ def main(page: ft.Page):
                             size=12,
                             color=ft.Colors.ON_SURFACE_VARIANT,
                         ),
-                        ft.Text("Common moves:", size=12, weight=ft.FontWeight.W_500, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(
+                            "Common moves:",
+                            size=12,
+                            weight=ft.FontWeight.W_500,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
                         ft.Column(
                             ref=common_moves_column,
                             controls=[],
