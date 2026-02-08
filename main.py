@@ -79,7 +79,8 @@ def main(page: ft.Page):
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
 
-    # Refs for side-panel sections (toggled visible/hidden during puzzles)
+    # Refs for side-panel sections (toggled visible/hidden during puzzles/TV)
+    history_panel_ref = ft.Ref[ft.Container]()
     elo_section_ref = ft.Ref[ft.Column]()
     eval_section_ref = ft.Ref[ft.Column]()
     opening_section_ref = ft.Ref[ft.Column]()
@@ -1090,15 +1091,25 @@ def main(page: ft.Page):
             page.update(undo_btn.current)
 
     def update_side_panel_visibility():
-        """Show or hide side-panel sections based on whether a puzzle is active.
+        """Show or hide side-panel sections based on current mode.
 
-        During puzzles, ELO rating, evaluation bar, and opening explorer are
-        hidden because they are irrelevant to the puzzle-solving experience.
+        - Lichess TV: hide the entire side panel (rating, eval, opening, moves).
+        - Puzzles: hide ELO, evaluation, and opening sections only.
+        - Normal play: show everything.
         """
+        # Hide entire side panel in TV mode
+        if history_panel_ref.current is not None:
+            history_panel_ref.current.visible = not tv_watching
+            try:
+                history_panel_ref.current.update()
+            except RuntimeError:
+                pass
+
+        # Hide individual sections during puzzles
         in_puzzle = active_puzzle is not None
         for ref in (elo_section_ref, eval_section_ref, opening_section_ref):
             if ref.current is not None:
-                ref.current.visible = not in_puzzle
+                ref.current.visible = not in_puzzle and not tv_watching
                 try:
                     ref.current.update()
                 except RuntimeError:
@@ -2181,6 +2192,7 @@ def main(page: ft.Page):
     )
 
     history_panel = ft.Container(
+        ref=history_panel_ref,
         content=ft.Column(
             [
                 # --- ELO Rating section (hidden during puzzles) ---
