@@ -73,7 +73,6 @@ def main(page: ft.Page):
     valid_moves = []  # list of (row, col)
     hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
     animating_move = None  # (from_row, from_col, to_row, to_col) during move animation, else None
-    _drag_source_map = {}  # Maps Draggable uid -> (row, col) for drag-and-drop
     game_over = False
     message = ft.Ref[ft.Text]()
     history_text = ft.Ref[ft.Text]()
@@ -527,8 +526,8 @@ def main(page: ft.Page):
                     content=piece_img,
                     content_when_dragging=ghost_img,
                     content_feedback=feedback_img,
+                    data=f"{row},{col}",
                 )
-                _drag_source_map[draggable.uid] = (row, col)
                 content_list.append(draggable)
             else:
                 content_list.append(piece_img)
@@ -572,9 +571,16 @@ def main(page: ft.Page):
                 return
             if not is_human_turn():
                 return
-            src_pos = _drag_source_map.get(e.src_id)
-            if src_pos:
-                from_row, from_col = src_pos
+            try:
+                src = page.get_control(e.src_id)
+            except (AttributeError, KeyError):
+                src = None
+            if src and hasattr(src, "data") and src.data:
+                try:
+                    parts = src.data.split(",")
+                    from_row, from_col = int(parts[0]), int(parts[1])
+                except (ValueError, IndexError):
+                    return
                 selected = None
                 valid_moves = []
                 hint_moves = []
@@ -769,7 +775,6 @@ def main(page: ft.Page):
         override_width: float | None = None, override_height: float | None = None
     ):
         nonlocal square_size
-        _drag_source_map.clear()
         square_size = get_square_size(override_width, override_height)
         flipped = get_board_flipped()
         grid.controls.clear()
