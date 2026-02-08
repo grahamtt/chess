@@ -194,6 +194,16 @@ class ChessGame:
         scored_moves.sort(key=lambda x: x[0], reverse=True)
         return [(move, score, san) for score, move, san in scored_moves[:top_n]]
 
+    def get_last_move(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        """Return the last move as ((from_row, from_col), (to_row, to_col)).
+
+        Returns None if no moves have been made yet.
+        """
+        if not self._board.move_stack:
+            return None
+        last = self._board.move_stack[-1]
+        return (_square_to_ui(last.from_square), _square_to_ui(last.to_square))
+
     def get_initial_fen(self) -> str:
         """Return the FEN of the position before any moves were made.
 

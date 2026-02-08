@@ -101,25 +101,22 @@ class TestPuzzleStats:
     def test_initial_stats(self):
         stats = PuzzleStats(puzzle_id="test")
         assert stats.attempts == 0
-        assert stats.solves == 0
+        assert stats.solved is False
         assert stats.best_time_secs is None
-        assert stats.solve_rate == 0.0
 
     def test_record_solve(self):
         stats = PuzzleStats(puzzle_id="test")
         stats.record_attempt(solved=True, time_secs=5.0)
         assert stats.attempts == 1
-        assert stats.solves == 1
+        assert stats.solved is True
         assert stats.best_time_secs == 5.0
-        assert stats.solve_rate == 1.0
 
     def test_record_failure(self):
         stats = PuzzleStats(puzzle_id="test")
         stats.record_attempt(solved=False, time_secs=3.0)
         assert stats.attempts == 1
-        assert stats.solves == 0
+        assert stats.solved is False
         assert stats.best_time_secs is None
-        assert stats.solve_rate == 0.0
 
     def test_best_time_tracks_minimum(self):
         stats = PuzzleStats(puzzle_id="test")
@@ -134,9 +131,16 @@ class TestPuzzleStats:
         stats.record_attempt(solved=True, time_secs=4.0)
         stats.record_attempt(solved=False, time_secs=1.0)
         assert stats.attempts == 3
-        assert stats.solves == 1
-        assert stats.solve_rate == pytest.approx(1 / 3)
+        assert stats.solved is True
         assert stats.best_time_secs == 4.0
+
+    def test_solved_stays_true_after_failure(self):
+        """Once a puzzle is solved, it stays solved even if a later attempt fails."""
+        stats = PuzzleStats(puzzle_id="test")
+        stats.record_attempt(solved=True, time_secs=5.0)
+        assert stats.solved is True
+        stats.record_attempt(solved=False, time_secs=3.0)
+        assert stats.solved is True
 
     def test_last_attempted_timestamp(self):
         stats = PuzzleStats(puzzle_id="test")
@@ -246,7 +250,7 @@ class TestPuzzleProgress:
         p.record_attempt("p1", 800, True, 5.0, 1)
         stats = p.get_stats_for_puzzle("p1")
         assert stats.attempts == 1
-        assert stats.solves == 1
+        assert stats.solved is True
 
     def test_solve_rate_property(self):
         p = PuzzleProgress()

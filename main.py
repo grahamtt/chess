@@ -32,7 +32,15 @@ from puzzle_progress import (
     load_puzzle_progress,
     save_puzzle_progress,
 )
-from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
+from bots import (
+    BotBot,
+    ChessBot,
+    DIFFICULTY_PRESETS,
+    MinimaxBot,
+    SimpleBot,
+    StockfishBot,
+    is_stockfish_available,
+)
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
 from elo import (
     EloProfile,
@@ -53,6 +61,7 @@ DARK_SQUARE = "#b58863"
 HIGHLIGHT = "#7fc97f"
 HIGHLIGHT_CAPTURE = "#f27777"
 SELECTED = "#baca44"
+LAST_MOVE = "#a9d18e"  # Green for last-move highlighting (from & to squares)
 HINT_FROM = "#ffd700"  # Gold for hint source square
 HINT_TO = "#ffa500"  # Orange for hint destination square
 
@@ -107,6 +116,15 @@ def main(page: ft.Page):
         "minimax_3": MinimaxBot(depth=3, randomness=0.3),
         "minimax_4": MinimaxBot(depth=4, randomness=0.3),
     }
+
+    # Register Stockfish bots (only if the binary is found on this system)
+    _stockfish_available = is_stockfish_available()
+    if _stockfish_available:
+        for _sf_key, (_sf_skill, _sf_time, _sf_elo) in DIFFICULTY_PRESETS.items():
+            player_bots[_sf_key] = StockfishBot(
+                skill_level=_sf_skill,
+                think_time=_sf_time,
+            )
 
     # ELO rating system
     elo_profile: EloProfile = load_elo_profile()
@@ -457,6 +475,12 @@ def main(page: ft.Page):
             (row, col) == hint_to for _, hint_to, _, _ in hint_moves
         )
 
+        # Check if this square is part of the most recent move
+        last_move = game.get_last_move()
+        is_last_move_square = last_move is not None and (
+            (row, col) == last_move[0] or (row, col) == last_move[1]
+        )
+
         if selected == (row, col):
             bg = SELECTED
         elif is_hint_from:
@@ -465,6 +489,8 @@ def main(page: ft.Page):
             bg = HINT_TO
         elif (row, col) in valid_moves:
             bg = HIGHLIGHT_CAPTURE if cell is not None else HIGHLIGHT
+        elif is_last_move_square:
+            bg = LAST_MOVE
 
         content_list = []
         if cell is not None:
@@ -833,7 +859,11 @@ def main(page: ft.Page):
     )
 
     def do_new_game(_):
-        """Reset the game (called after confirmation)."""
+        """Reset the game (called after confirmation).
+
+        When a puzzle is active the current puzzle is restarted instead of
+        returning to a blank game.
+        """
         nonlocal \
             selected, \
             valid_moves, \
@@ -847,11 +877,57 @@ def main(page: ft.Page):
             elo_updated_this_game, \
             active_puzzle, \
             puzzle_move_index, \
+            puzzle_start_time, \
             puzzle_moves_made
         page.pop_dialog()
         # Stop TV stream if active
         if tv_watching:
             _stop_tv_stream()
+
+        # If a puzzle is active, restart it instead of resetting to a new game
+        current_puzzle = active_puzzle
+        if current_puzzle is not None:
+            if not game.set_fen(current_puzzle.fen):
+                # Fallback: if the FEN is invalid somehow, do a normal reset
+                current_puzzle = None
+
+        if current_puzzle is not None:
+            # Restart the active puzzle
+            selected = None
+            valid_moves = []
+            hint_moves = []
+            elo_updated_this_game = False
+            active_puzzle = current_puzzle
+            puzzle_move_index = 0
+            puzzle_start_time = time.monotonic()
+            puzzle_moves_made = 0
+            clock_enabled = current_puzzle.clock_enabled
+            clock_started = current_puzzle.clock_enabled and game.can_undo()
+            game_over = (
+                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+            )
+            # Show puzzle info in status
+            if current_puzzle.objective != PuzzleObjective.FREE_PLAY:
+                diff_label = current_puzzle.difficulty_label.value
+                msg = f"Puzzle: {current_puzzle.name} ({diff_label} — {current_puzzle.difficulty_rating})"
+                if current_puzzle.num_player_moves > 1:
+                    msg += f" — Find {current_puzzle.num_player_moves} moves"
+                message.current.value = msg
+                message.current.color = ft.Colors.PURPLE
+            else:
+                update_status()
+            update_clock_display()
+            save_current_state()
+            refresh_board()
+            update_undo_button()
+            update_history()
+            update_evaluation_bar()
+            update_opening_explorer()
+            update_side_panel_visibility()
+            page.update()
+            return
+
+        # Normal new game reset (no puzzle active)
         game.reset()
         selected = None
         valid_moves = []
@@ -860,6 +936,7 @@ def main(page: ft.Page):
         elo_updated_this_game = False
         active_puzzle = None
         puzzle_move_index = 0
+        puzzle_start_time = time.monotonic()
         puzzle_moves_made = 0
         clock_started = False
         if time_control_secs is None:
@@ -1124,6 +1201,19 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_3", text="Minimax 3"),
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
     ]
+    if _stockfish_available:
+        player_options.extend(
+            [
+                ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
+                ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
+                ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
+                ft.DropdownOption(key="stockfish_4", text="Stockfish 4 (~1800)"),
+                ft.DropdownOption(key="stockfish_5", text="Stockfish 5 (~2000)"),
+                ft.DropdownOption(key="stockfish_6", text="Stockfish 6 (~2200)"),
+                ft.DropdownOption(key="stockfish_7", text="Stockfish 7 (~2500)"),
+                ft.DropdownOption(key="stockfish_8", text="Stockfish 8 (Max)"),
+            ]
+        )
     time_options = [
         ft.DropdownOption(key="unlimited", text="Unlimited"),
         ft.DropdownOption(key="60", text="1 min"),
@@ -1237,21 +1327,30 @@ def main(page: ft.Page):
 
     undo_btn = ft.Ref[ft.IconButton]()
 
-    new_game_dialog = ft.AlertDialog(
-        title=ft.Text("New game"),
-        content=ft.Text("Start a new game? The current game will be lost."),
-        actions=[
-            ft.TextButton(
-                "Cancel",
-                on_click=lambda e: page.pop_dialog(),
-            ),
-            ft.TextButton("New game", on_click=do_new_game),
-        ],
-        open=False,
-    )
-
     def show_new_game_dialog(_):
-        page.show_dialog(new_game_dialog)
+        if active_puzzle is not None:
+            title = "Restart puzzle"
+            content = (
+                f'Restart "{active_puzzle.name}"? Your current progress will be lost.'
+            )
+            confirm_label = "Restart"
+        else:
+            title = "New game"
+            content = "Start a new game? The current game will be lost."
+            confirm_label = "New game"
+        dialog = ft.AlertDialog(
+            title=ft.Text(title),
+            content=ft.Text(content),
+            actions=[
+                ft.TextButton(
+                    "Cancel",
+                    on_click=lambda e: page.pop_dialog(),
+                ),
+                ft.TextButton(confirm_label, on_click=do_new_game),
+            ],
+            open=False,
+        )
+        page.show_dialog(dialog)
 
     def load_puzzle_by_id(puzzle_id: str):
         """Load a puzzle by its unique ID."""
@@ -1343,12 +1442,12 @@ def main(page: ft.Page):
             rating_text = "Free Play"
 
         # Solve indicator
-        if stats.solves > 0:
-            solve_text = f" ✓ {stats.solves}/{stats.attempts}"
+        if stats.solved:
+            solve_text = " ✓ Solved"
             if stats.best_time_secs is not None:
                 solve_text += f" ({stats.best_time_secs:.1f}s)"
         elif stats.attempts > 0:
-            solve_text = f" ✗ 0/{stats.attempts}"
+            solve_text = f" ✗ Unsolved ({stats.attempts} attempt{'s' if stats.attempts != 1 else ''})"
         else:
             solve_text = ""
 
