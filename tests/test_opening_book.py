@@ -493,3 +493,23 @@ class TestIntegration:
         # All scores should be heuristic-based (no book matches with empty move stack)
         for _, _, score in moves:
             assert score <= 5
+
+    def test_non_standard_starting_position_with_moves(self):
+        """A board set from a custom FEN (puzzle) with subsequent moves should not crash."""
+        # Set up a non-standard position and make legal moves from it
+        board = chess.Board(
+            "r1bqkb1r/pppppppp/2n2n2/4P3/8/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3"
+        )
+        # Make a legal move from this position
+        legal = list(board.legal_moves)
+        assert len(legal) > 0
+        board.push(legal[0])
+
+        # Should not crash, even though the move stack can't replay from the
+        # standard starting position
+        name, desc = get_opening_name(board)
+        # Result doesn't matter, just shouldn't crash
+        assert name is None or isinstance(name, str)
+
+        moves = get_common_moves(board)
+        assert isinstance(moves, list)

@@ -70,13 +70,11 @@ OPENING_DATABASE = [
 
 
 def _get_move_sequence(board: chess.Board) -> list[str]:
-    """Get the sequence of moves played so far as UCI strings."""
-    moves = []
-    temp_board = chess.Board()
-    for move in board.move_stack:
-        moves.append(move.uci())
-        temp_board.push(move)
-    return moves
+    """Get the sequence of moves played so far as UCI strings.
+
+    Works regardless of the starting position (standard or custom FEN/puzzle).
+    """
+    return [move.uci() for move in board.move_stack]
 
 
 def get_opening_name(board: chess.Board) -> tuple[str | None, str | None]:
