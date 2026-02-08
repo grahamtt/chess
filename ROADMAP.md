@@ -57,9 +57,12 @@ _Quick wins that improve the day-to-day experience._
 
 _Features that add strategic depth and learning tools._
 
-### Stockfish Integration
-- Bundle or detect a local Stockfish binary
-- Use Stockfish for a "Hard" AI difficulty option
+### Stockfish Integration (started)
+- ~~Bundle or detect a local Stockfish binary~~ ✅
+- ~~Use Stockfish for a "Hard" AI difficulty option~~ ✅
+- 8 Stockfish difficulty levels (Skill 1–20, ~1200–2800 ELO) via `bots/stockfish.py`
+- Auto-detection of Stockfish binary (`$PATH`, `STOCKFISH_PATH` env var, common locations)
+- Graceful fallback: Stockfish options hidden when binary is not installed
 - Power the hint system and analysis mode with engine evaluations
 - Show engine depth, nodes searched, and principal variation
 
