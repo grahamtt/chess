@@ -1344,12 +1344,12 @@ def main(page: ft.Page):
             rating_text = "Free Play"
 
         # Solve indicator
-        if stats.solves > 0:
-            solve_text = f" ✓ {stats.solves}/{stats.attempts}"
+        if stats.solved:
+            solve_text = " ✓ Solved"
             if stats.best_time_secs is not None:
                 solve_text += f" ({stats.best_time_secs:.1f}s)"
         elif stats.attempts > 0:
-            solve_text = f" ✗ 0/{stats.attempts}"
+            solve_text = f" ✗ Unsolved ({stats.attempts} attempt{'s' if stats.attempts != 1 else ''})"
         else:
             solve_text = ""
 
