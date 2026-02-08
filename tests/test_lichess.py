@@ -779,9 +779,7 @@ class _MockStreamResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise httpx.HTTPStatusError(
-                "error", request=MagicMock(), response=self
-            )
+            raise httpx.HTTPStatusError("error", request=MagicMock(), response=self)
 
     def iter_lines(self):
         yield from self._lines
@@ -1106,24 +1104,28 @@ class TestTvFeedIntegration:
         lines = [
             json.dumps(SAMPLE_FEATURED_EVENT),
             json.dumps(SAMPLE_FEN_EVENT),
-            json.dumps({
-                "t": "fen",
-                "d": {
-                    "lm": "e7e5",
-                    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR",
-                    "wc": 178,
-                    "bc": 176,
-                },
-            }),
-            json.dumps({
-                "t": "fen",
-                "d": {
-                    "lm": "g1f3",
-                    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R",
-                    "wc": 175,
-                    "bc": 176,
-                },
-            }),
+            json.dumps(
+                {
+                    "t": "fen",
+                    "d": {
+                        "lm": "e7e5",
+                        "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR",
+                        "wc": 178,
+                        "bc": 176,
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "t": "fen",
+                    "d": {
+                        "lm": "g1f3",
+                        "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R",
+                        "wc": 175,
+                        "bc": 176,
+                    },
+                }
+            ),
         ]
         mock_stream.return_value = _MockStreamResponse(lines)
 

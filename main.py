@@ -11,7 +11,6 @@ from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from lichess import (
     LichessDailyPuzzle,
-    LichessTvChannel,
     LichessTvFenEvent,
     LichessTvGame,
     fetch_daily_puzzle,
@@ -1566,9 +1565,7 @@ def main(page: ft.Page):
         b_name = bp.user_name if bp else "Black"
         w_rating = f" ({wp.rating})" if wp else ""
         b_rating = f" ({bp.rating})" if bp else ""
-        message.current.value = (
-            f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
-        )
+        message.current.value = f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
         message.current.color = ft.Colors.TEAL
         update_clock_display()
         refresh_board()
@@ -1701,7 +1698,9 @@ def main(page: ft.Page):
         # --- Selectable channel list with highlight ---
         # selected_channel[0] holds the currently selected channel name (None = Top Rated)
         selected_channel: list[str | None] = [None]
-        channel_list_column = ft.Column(scroll=ft.ScrollMode.AUTO, tight=True, spacing=0)
+        channel_list_column = ft.Column(
+            scroll=ft.ScrollMode.AUTO, tight=True, spacing=0
+        )
 
         def _build_channel_tiles():
             """Rebuild channel tiles with current selection highlight."""
@@ -1714,13 +1713,17 @@ def main(page: ft.Page):
                     content=ft.ListTile(
                         leading=ft.Icon(
                             ft.Icons.STAR,
-                            color=ft.Colors.TEAL if is_top else ft.Colors.ON_SURFACE_VARIANT,
+                            color=ft.Colors.TEAL
+                            if is_top
+                            else ft.Colors.ON_SURFACE_VARIANT,
                             size=20,
                         ),
                         title=ft.Text(
                             "Top Rated",
                             size=14,
-                            weight=ft.FontWeight.W_600 if is_top else ft.FontWeight.W_500,
+                            weight=ft.FontWeight.W_600
+                            if is_top
+                            else ft.FontWeight.W_500,
                             color=ft.Colors.TEAL if is_top else ft.Colors.ON_SURFACE,
                         ),
                         subtitle=ft.Text(
@@ -1742,21 +1745,31 @@ def main(page: ft.Page):
                         content=ft.ListTile(
                             leading=ft.Icon(
                                 ft.Icons.LIVE_TV,
-                                color=ft.Colors.TEAL if is_sel else ft.Colors.ON_SURFACE_VARIANT,
+                                color=ft.Colors.TEAL
+                                if is_sel
+                                else ft.Colors.ON_SURFACE_VARIANT,
                                 size=20,
                             ),
                             title=ft.Text(
                                 ch.channel_name,
                                 size=14,
-                                weight=ft.FontWeight.W_600 if is_sel else ft.FontWeight.W_500,
-                                color=ft.Colors.TEAL if is_sel else ft.Colors.ON_SURFACE,
+                                weight=ft.FontWeight.W_600
+                                if is_sel
+                                else ft.FontWeight.W_500,
+                                color=ft.Colors.TEAL
+                                if is_sel
+                                else ft.Colors.ON_SURFACE,
                             ),
                             subtitle=ft.Text(
-                                f"{ch.user_name} ({ch.rating})" if ch.user_name else "—",
+                                f"{ch.user_name} ({ch.rating})"
+                                if ch.user_name
+                                else "—",
                                 size=12,
                                 color=ft.Colors.ON_SURFACE_VARIANT,
                             ),
-                            on_click=lambda e, name=ch.channel_name: _select_channel(name),
+                            on_click=lambda e, name=ch.channel_name: _select_channel(
+                                name
+                            ),
                         ),
                         bgcolor=ft.Colors.TEAL_50 if is_sel else None,
                         border_radius=8,
