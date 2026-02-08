@@ -216,7 +216,9 @@ PUZZLE_DATABASE: list[Puzzle] = [
         difficulty_rating=800,
         objective=PuzzleObjective.FIND_BEST_MOVES,
         solution_uci=["f7f8"],
-        hints=["The queen can deliver check on the 8th rank. The rook on h8 is blocked!"],
+        hints=[
+            "The queen can deliver check on the 8th rank. The rook on h8 is blocked!"
+        ],
         completion_message="Checkmate! The bishop and queen coordinate perfectly.",
         failure_message="Your queen can deliver the final blow on the 8th rank.",
     ),
