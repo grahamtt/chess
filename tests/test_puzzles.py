@@ -47,17 +47,25 @@ class TestDatabaseIntegrity:
                 pytest.fail(f"Invalid FEN in puzzle '{p.id}': {p.fen}")
 
     def test_all_solutions_legal(self):
-        """Every move in every solution must be legal in sequence."""
+        """Every move in every solution must be legal in sequence.
+
+        Solution entries may contain pipe-separated alternatives (e.g.
+        ``"e7e8q|e7e8r"``).  All alternatives must be legal at that
+        position; the first alternative is used to advance the board.
+        """
         for p in PUZZLE_DATABASE:
             if not p.solution_uci:
                 continue
             board = chess.Board(p.fen)
-            for i, uci in enumerate(p.solution_uci):
-                move = chess.Move.from_uci(uci)
-                assert move in board.legal_moves, (
-                    f"Illegal move {uci} at step {i} in puzzle '{p.id}'"
-                )
-                board.push(move)
+            for i, uci_entry in enumerate(p.solution_uci):
+                alternatives = uci_entry.split("|")
+                for alt in alternatives:
+                    move = chess.Move.from_uci(alt)
+                    assert move in board.legal_moves, (
+                        f"Illegal move {alt} at step {i} in puzzle '{p.id}'"
+                    )
+                # Advance board with the first (canonical) alternative
+                board.push(chess.Move.from_uci(alternatives[0]))
 
     def test_non_empty_fields(self):
         for p in PUZZLE_DATABASE:
@@ -200,6 +208,23 @@ class TestPuzzleDataclass:
     def test_is_player_move_correct(self, mate_in_1):
         assert mate_in_1.is_player_move_correct(0, "e1e8")
         assert not mate_in_1.is_player_move_correct(0, "e1e7")
+
+    def test_is_player_move_correct_alternatives(self):
+        """Pipe-separated alternatives should all be accepted."""
+        p = Puzzle(
+            id="test_alt",
+            name="Test Alternatives",
+            fen="6k1/4Pppp/8/8/8/8/5PPP/6K1 w - - 0 1",
+            description="Test",
+            category=PuzzleCategory.CHECKMATE,
+            difficulty_rating=900,
+            objective=PuzzleObjective.FIND_BEST_MOVES,
+            solution_uci=["e7e8q|e7e8r"],
+        )
+        assert p.is_player_move_correct(0, "e7e8q")
+        assert p.is_player_move_correct(0, "e7e8r")
+        assert not p.is_player_move_correct(0, "e7e8b")
+        assert not p.is_player_move_correct(0, "e7e8n")
 
     def test_is_player_move_correct_multi(self, mate_in_2):
         assert mate_in_2.is_player_move_correct(0, "a1a7")

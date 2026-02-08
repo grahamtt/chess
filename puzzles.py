@@ -100,13 +100,18 @@ class Puzzle:
 
         For FIND_BEST_MOVES and CHECKMATE_IN_N objectives, the move must match
         the solution exactly. For FREE_PLAY, any legal move is accepted.
+
+        Solution moves may contain pipe-separated alternatives (e.g.
+        ``"e7e8q|e7e8r"``) — the player's move is accepted if it matches
+        *any* of the alternatives.
         """
         if self.objective == PuzzleObjective.FREE_PLAY:
             return True
         player_moves = self.player_moves
         if move_index < 0 or move_index >= len(player_moves):
             return False
-        return uci_move == player_moves[move_index]
+        accepted = player_moves[move_index].split("|")
+        return uci_move in accepted
 
     def get_opponent_response(self, move_index: int) -> str | None:
         """Get the opponent's automatic response after the player's Nth move.
@@ -403,9 +408,9 @@ PUZZLE_DATABASE: list[Puzzle] = [
         category=PuzzleCategory.CHECKMATE,
         difficulty_rating=900,
         objective=PuzzleObjective.FIND_BEST_MOVES,
-        solution_uci=["e7e8q"],
+        solution_uci=["e7e8q|e7e8r"],
         hints=["Promote the pawn. What piece gives checkmate?"],
-        completion_message="Promotion to queen is checkmate! Brilliant.",
+        completion_message="Promotion checkmate! Both queen and rook work here.",
         failure_message="Promote the pawn to the right piece for checkmate.",
     ),
     # ======================================================================
