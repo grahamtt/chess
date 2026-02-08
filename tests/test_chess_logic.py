@@ -352,8 +352,6 @@ def test_chess_game_get_position_evaluation_perspective():
 def test_make_move_handles_assertion_error(monkeypatch):
     """make_move should return False if push() raises AssertionError."""
     game = ChessGame()
-    # Replace push with one that always raises AssertionError
-    board = game.get_board()
 
     def _bad_push(move):
         raise AssertionError("push() assertion")
@@ -379,12 +377,8 @@ def test_apply_move_handles_assertion_error(monkeypatch):
 def test_load_from_moves_handles_assertion_error(monkeypatch):
     """load_from_moves should return False and reset if push() raises AssertionError."""
     game = ChessGame()
-    call_count = [0]
-
-    original_push = game._board.push
 
     def _bad_push(move):
-        call_count[0] += 1
         raise AssertionError("push() assertion")
 
     monkeypatch.setattr(game._board, "push", _bad_push)
