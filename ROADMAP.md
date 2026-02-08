@@ -15,7 +15,7 @@ The app is a cross-platform (desktop/web) chess application built with **Flet** 
 - Opening explorer with common lines and popularity indicators
 - Hint system showing top 3 best moves
 - Configurable chess clock (1/3/5/10 min + unlimited)
-- 20+ puzzles and scenarios (checkmate patterns, tactics, endgames)
+- 58 puzzles and scenarios with difficulty ratings, completion/failure conditions, and progress tracking
 - Undo, new game, and FEN support
 - Comprehensive test suite (80%+ coverage)
 
@@ -75,11 +75,15 @@ _Features that add strategic depth and learning tools._
 - ~~Display rating history and progress chart~~
 - Implemented in `elo.py` with standard ELO formula, dynamic K-factor, persistent JSON profile, and difficulty recommendation
 
-### Puzzle Rating & Progression
-- Assign difficulty ratings to puzzles (beginner, intermediate, advanced)
-- Track solve rate, average time, and streak
-- Unlock harder puzzles as the player improves
-- Generate random puzzle sets from a larger database
+### Puzzle Rating & Progression ✅
+- ~~Assign difficulty ratings to puzzles (beginner, intermediate, advanced)~~
+- ~~Track solve rate, average time, and streak~~
+- ~~Unlock harder puzzles as the player improves~~
+- ~~Generate random puzzle sets from a larger database~~
+- ~~Comprehensive puzzle database (58 puzzles across 6 categories)~~
+- ~~Puzzle completion and failure conditions separate from ending the game~~
+- ~~Auto-opponent responses in multi-move puzzles~~
+- ~~Elo-like rating system for puzzle skill tracking~~
 
 ### Opening Book Expansion
 - Add more opening lines with ECO codes
