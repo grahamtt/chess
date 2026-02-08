@@ -15,7 +15,18 @@ from lichess import (
     format_themes,
     get_solution_san,
 )
-from puzzles import PUZZLES
+from puzzles import (
+    PUZZLE_DATABASE,
+    PUZZLE_BY_ID,
+    Puzzle,
+    PuzzleCategory,
+    PuzzleObjective,
+)
+from puzzle_progress import (
+    PuzzleProgress,
+    load_puzzle_progress,
+    save_puzzle_progress,
+)
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
 from elo import (
@@ -63,6 +74,11 @@ def main(page: ft.Page):
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
 
+    # Refs for side-panel sections (toggled visible/hidden during puzzles)
+    elo_section_ref = ft.Ref[ft.Column]()
+    eval_section_ref = ft.Ref[ft.Column]()
+    opening_section_ref = ft.Ref[ft.Column]()
+
     # Game clock: each player has fixed time; runs down on their turn
     time_control_secs = 300  # 5 min default; set by dropdown for next game
     white_remaining_secs = float(time_control_secs)
@@ -95,6 +111,13 @@ def main(page: ft.Page):
     elo_peak_text = ft.Ref[ft.Text]()
     elo_recommendation_text = ft.Ref[ft.Text]()
     elo_updated_this_game = False  # Guard: only update ELO once per game
+
+    # --- Puzzle solving state ---
+    active_puzzle: Puzzle | None = None  # Currently active puzzle (None = normal game)
+    puzzle_move_index = 0  # Which player move we're on in the solution
+    puzzle_start_time = 0.0  # When the puzzle was loaded
+    puzzle_moves_made = 0  # Total moves made by the player in this attempt
+    puzzle_progress: PuzzleProgress = load_puzzle_progress()
 
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
@@ -148,12 +171,17 @@ def main(page: ft.Page):
     def handle_game_over_elo(result_for_white: float | None):
         """Update ELO after a game ends (human vs bot only).
 
+        Puzzles never affect the player's ELO rating.
+
         Args:
             result_for_white: 1.0 if white won, 0.0 if black won, 0.5 if draw,
                             None if not applicable (bot vs bot or human vs human).
         """
         nonlocal elo_updated_this_game
         if elo_updated_this_game or result_for_white is None:
+            return
+        # Puzzles never affect ELO
+        if active_puzzle is not None:
             return
 
         # Determine which side the human is playing and which bot they face
@@ -445,12 +473,50 @@ def main(page: ft.Page):
 
         def on_tap(e):
             nonlocal selected, valid_moves, hint_moves, game_over
+            nonlocal active_puzzle, puzzle_move_index, puzzle_moves_made
             if game_over:
                 return
             if not is_human_turn():
                 refresh_board()
                 return
             if selected is not None and (row, col) in valid_moves:
+                # Determine the UCI move the player is making
+                import chess as _chess
+
+                from_sq = _chess.square(selected[1], 7 - selected[0])
+                to_sq = _chess.square(col, 7 - row)
+                # Check for promotion
+                board = game.get_board()
+                piece = board.piece_at(from_sq)
+                is_promo = (
+                    piece is not None
+                    and piece.piece_type == _chess.PAWN
+                    and (
+                        _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
+                    )
+                )
+                uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
+                if is_promo:
+                    uci_move += "q"  # Default queen promotion for puzzle checks
+
+                # --- Puzzle validation ---
+                if (
+                    active_puzzle
+                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+                ):
+                    puzzle_moves_made += 1
+                    if not active_puzzle.is_player_move_correct(
+                        puzzle_move_index, uci_move
+                    ):
+                        # Wrong move — puzzle failed
+                        handle_puzzle_failure()
+                        selected = None
+                        valid_moves = []
+                        hint_moves = []
+                        refresh_board()
+                        page.update()
+                        return
+
                 game.make_move(selected[0], selected[1], row, col)
                 selected = None
                 valid_moves = []
@@ -464,6 +530,25 @@ def main(page: ft.Page):
                 save_current_state()
                 refresh_board()
                 page.update()
+
+                # --- Puzzle completion check ---
+                if (
+                    active_puzzle
+                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+                ):
+                    if active_puzzle.is_complete_after_player_move(puzzle_move_index):
+                        handle_puzzle_completion()
+                        page.update()
+                        return
+                    # Play opponent's automatic response
+                    opponent_uci = active_puzzle.get_opponent_response(
+                        puzzle_move_index
+                    )
+                    puzzle_move_index += 1
+                    if opponent_uci:
+                        page.run_task(play_puzzle_opponent_move, opponent_uci)
+                        return
+
                 if not game_over and not is_human_turn():
                     page.run_task(bot_move_after_human)
                 return
@@ -572,6 +657,14 @@ def main(page: ft.Page):
             hint_moves = []
         if game.is_checkmate():
             winner = "Black" if game.turn == "white" else "White"
+            # For CHECKMATE_IN_N puzzles, checkmate means puzzle completion
+            if (
+                active_puzzle
+                and active_puzzle.objective == PuzzleObjective.CHECKMATE_IN_N
+                and not game_over
+            ):
+                handle_puzzle_completion()
+                return
             message.current.value = f"Checkmate! {winner} wins."
             message.current.color = ft.Colors.BLUE
             game_over = True
@@ -583,6 +676,10 @@ def main(page: ft.Page):
             message.current.color = ft.Colors.ORANGE
             game_over = True
             handle_game_over_elo(0.5)
+            # If we're in a puzzle and stalemate occurs, that's a failure
+            if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+                handle_puzzle_failure()
+                return
         elif game.is_only_kings_left():
             message.current.value = "Draw. Only kings left."
             message.current.color = ft.Colors.ORANGE
@@ -594,6 +691,81 @@ def main(page: ft.Page):
         else:
             message.current.value = f"{game.turn.capitalize()} to move."
             message.current.color = ft.Colors.BLACK
+
+    # --- Puzzle solving helpers ---
+    def handle_puzzle_completion():
+        """Called when the player completes a puzzle successfully."""
+        nonlocal game_over, active_puzzle, puzzle_progress
+        game_over = True
+        if active_puzzle:
+            elapsed = time.monotonic() - puzzle_start_time
+            puzzle_progress.record_attempt(
+                puzzle_id=active_puzzle.id,
+                puzzle_rating=active_puzzle.difficulty_rating,
+                solved=True,
+                time_secs=elapsed,
+                moves_made=puzzle_moves_made,
+            )
+            save_puzzle_progress(puzzle_progress)
+            rating_change = puzzle_progress.get_rating_change_display()
+            rating_str = f" (Rating: {puzzle_progress.player_rating} {rating_change})"
+            msg = active_puzzle.completion_message or "Puzzle solved!"
+            if puzzle_progress.current_streak > 1:
+                msg += f" Streak: {puzzle_progress.current_streak}!"
+            message.current.value = f"✓ {msg}{rating_str}"
+            message.current.color = ft.Colors.GREEN
+        else:
+            message.current.value = "Puzzle solved!"
+            message.current.color = ft.Colors.GREEN
+
+    def handle_puzzle_failure():
+        """Called when the player makes a wrong move in a puzzle."""
+        nonlocal game_over, active_puzzle, puzzle_progress
+        game_over = True
+        if active_puzzle:
+            elapsed = time.monotonic() - puzzle_start_time
+            puzzle_progress.record_attempt(
+                puzzle_id=active_puzzle.id,
+                puzzle_rating=active_puzzle.difficulty_rating,
+                solved=False,
+                time_secs=elapsed,
+                moves_made=puzzle_moves_made,
+            )
+            save_puzzle_progress(puzzle_progress)
+            rating_change = puzzle_progress.get_rating_change_display()
+            rating_str = f" (Rating: {puzzle_progress.player_rating} {rating_change})"
+            msg = active_puzzle.failure_message or "Not the best move."
+            # Show the expected move as a hint
+            expected_moves = active_puzzle.player_moves
+            if puzzle_move_index < len(expected_moves):
+                msg += f" Expected: {expected_moves[puzzle_move_index]}"
+            message.current.value = f"✗ {msg}{rating_str}"
+            message.current.color = ft.Colors.RED
+        else:
+            message.current.value = "Wrong move! Puzzle failed."
+            message.current.color = ft.Colors.RED
+
+    async def play_puzzle_opponent_move(opponent_uci: str):
+        """Play the opponent's automatic response in a puzzle after a short delay."""
+        nonlocal selected, valid_moves, hint_moves
+        import chess as _chess
+
+        await asyncio.sleep(0.4)  # Brief pause so player sees their move
+        try:
+            move = _chess.Move.from_uci(opponent_uci)
+            if game.apply_move(move):
+                selected = None
+                valid_moves = []
+                hint_moves = []
+                update_status()
+                update_undo_button()
+                update_history()
+                update_evaluation_bar()
+                update_opening_explorer()
+                refresh_board()
+                page.update()
+        except (ValueError, TypeError):
+            pass  # Invalid move string, skip
 
     grid = ft.Column(spacing=0)
     _init_flipped = get_board_flipped()
@@ -656,7 +828,10 @@ def main(page: ft.Page):
             move_start_time, \
             clock_enabled, \
             clock_started, \
-            elo_updated_this_game
+            elo_updated_this_game, \
+            active_puzzle, \
+            puzzle_move_index, \
+            puzzle_moves_made
         page.pop_dialog()
         game.reset()
         selected = None
@@ -664,6 +839,9 @@ def main(page: ft.Page):
         hint_moves = []
         game_over = False
         elo_updated_this_game = False
+        active_puzzle = None
+        puzzle_move_index = 0
+        puzzle_moves_made = 0
         clock_started = False
         if time_control_secs is None:
             clock_enabled = False
@@ -684,6 +862,7 @@ def main(page: ft.Page):
         update_evaluation_bar()
         update_opening_explorer()
         update_elo_display()
+        update_side_panel_visibility()
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
@@ -695,13 +874,21 @@ def main(page: ft.Page):
             hint_moves, \
             game_over, \
             move_start_time, \
-            clock_started
+            clock_started, \
+            active_puzzle, \
+            puzzle_move_index, \
+            puzzle_moves_made
         if not game.undo():
             return
         selected = None
         valid_moves = []
         hint_moves = []  # Clear hints when undoing
         game_over = False
+        # Clear puzzle state on undo (puzzle becomes invalid after undo)
+        if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+            active_puzzle = None
+            puzzle_move_index = 0
+            puzzle_moves_made = 0
         move_start_time = time.monotonic()
         # If we undid back to the starting position, clock has not "started" yet
         if clock_enabled:
@@ -714,6 +901,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_side_panel_visibility()
         page.update()
 
     def update_history():
@@ -883,6 +1071,21 @@ def main(page: ft.Page):
             undo_btn.current.update()
             page.update(undo_btn.current)
 
+    def update_side_panel_visibility():
+        """Show or hide side-panel sections based on whether a puzzle is active.
+
+        During puzzles, ELO rating, evaluation bar, and opening explorer are
+        hidden because they are irrelevant to the puzzle-solving experience.
+        """
+        in_puzzle = active_puzzle is not None
+        for ref in (elo_section_ref, eval_section_ref, opening_section_ref):
+            if ref.current is not None:
+                ref.current.visible = not in_puzzle
+                try:
+                    ref.current.update()
+                except RuntimeError:
+                    pass
+
     player_options = [
         ft.DropdownOption(key="human", text="Human"),
         ft.DropdownOption(key="random", text="Random"),
@@ -1021,13 +1224,13 @@ def main(page: ft.Page):
     def show_new_game_dialog(_):
         page.show_dialog(new_game_dialog)
 
-    def load_puzzle(index: int):
-        """Load puzzle by index and close dialog."""
+    def load_puzzle_by_id(puzzle_id: str):
+        """Load a puzzle by its unique ID."""
         page.pop_dialog()
-        if index < 0 or index >= len(PUZZLES):
+        puzzle = PUZZLE_BY_ID.get(puzzle_id)
+        if puzzle is None:
             return
-        name, fen, _, puzzle_clock_enabled = PUZZLES[index]
-        if not game.set_fen(fen):
+        if not game.set_fen(puzzle.fen):
             return
         nonlocal \
             selected, \
@@ -1036,17 +1239,34 @@ def main(page: ft.Page):
             game_over, \
             clock_enabled, \
             clock_started, \
-            elo_updated_this_game
+            elo_updated_this_game, \
+            active_puzzle, \
+            puzzle_move_index, \
+            puzzle_start_time, \
+            puzzle_moves_made
         selected = None
         valid_moves = []
-        hint_moves = []  # Clear hints when loading puzzle
+        hint_moves = []
         elo_updated_this_game = False
-        clock_enabled = puzzle_clock_enabled
-        clock_started = puzzle_clock_enabled and game.can_undo()
+        active_puzzle = puzzle
+        puzzle_move_index = 0
+        puzzle_start_time = time.monotonic()
+        puzzle_moves_made = 0
+        clock_enabled = puzzle.clock_enabled
+        clock_started = puzzle.clock_enabled and game.can_undo()
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
-        update_status()
+        # Show puzzle info in status
+        if puzzle.objective != PuzzleObjective.FREE_PLAY:
+            diff_label = puzzle.difficulty_label.value
+            msg = f"Puzzle: {puzzle.name} ({diff_label} — {puzzle.difficulty_rating})"
+            if puzzle.num_player_moves > 1:
+                msg += f" — Find {puzzle.num_player_moves} moves"
+            message.current.value = msg
+            message.current.color = ft.Colors.PURPLE
+        else:
+            update_status()
         update_clock_display()
         save_current_state()
         refresh_board()
@@ -1054,19 +1274,92 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_side_panel_visibility()
         page.update()
 
-    def make_puzzle_tile(index: int, name: str, desc: str):
+    def _difficulty_color(rating: int) -> str:
+        """Return a color string for puzzle difficulty."""
+        if rating == 0:
+            return ft.Colors.ON_SURFACE_VARIANT
+        if rating < 1000:
+            return ft.Colors.GREEN
+        if rating < 1400:
+            return ft.Colors.BLUE
+        if rating < 1800:
+            return ft.Colors.ORANGE
+        return ft.Colors.RED
+
+    def _category_icon(cat: PuzzleCategory) -> str:
+        """Return an icon name for a category."""
+        icons = {
+            PuzzleCategory.CHECKMATE: ft.Icons.FLAG,
+            PuzzleCategory.TACTICS: ft.Icons.FLASH_ON,
+            PuzzleCategory.ENDGAME: ft.Icons.HOURGLASS_BOTTOM,
+            PuzzleCategory.OPENING: ft.Icons.MENU_BOOK,
+            PuzzleCategory.DEFENSE: ft.Icons.SHIELD,
+            PuzzleCategory.FREE_PLAY: ft.Icons.SPORTS_ESPORTS,
+        }
+        return icons.get(cat, ft.Icons.EXTENSION)
+
+    def make_puzzle_tile(puzzle: Puzzle):
+        """Build a list tile for a puzzle in the dialog."""
+        unlocked = puzzle_progress.is_puzzle_unlocked(puzzle.difficulty_rating)
+        stats = puzzle_progress.get_stats_for_puzzle(puzzle.id)
+
+        # Difficulty badge
+        if puzzle.difficulty_rating > 0:
+            diff_label = puzzle.difficulty_label.value
+            rating_text = f"{diff_label} ({puzzle.difficulty_rating})"
+        else:
+            rating_text = "Free Play"
+
+        # Solve indicator
+        if stats.solves > 0:
+            solve_text = f" ✓ {stats.solves}/{stats.attempts}"
+            if stats.best_time_secs is not None:
+                solve_text += f" ({stats.best_time_secs:.1f}s)"
+        elif stats.attempts > 0:
+            solve_text = f" ✗ 0/{stats.attempts}"
+        else:
+            solve_text = ""
+
+        subtitle = f"{rating_text}{solve_text}"
+        if not unlocked:
+            subtitle = (
+                f"🔒 Locked — need rating {puzzle.difficulty_rating - UNLOCK_MARGIN}+"
+            )
+
         return ft.ListTile(
-            title=ft.Text(name, size=14, weight=ft.FontWeight.W_500),
-            subtitle=ft.Text(desc, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            on_click=lambda e, idx=index: load_puzzle(idx),
+            leading=ft.Icon(
+                _category_icon(puzzle.category),
+                color=_difficulty_color(puzzle.difficulty_rating)
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
+                size=20,
+            ),
+            title=ft.Text(
+                puzzle.name,
+                size=14,
+                weight=ft.FontWeight.W_500,
+                color=ft.Colors.ON_SURFACE
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
+            ),
+            subtitle=ft.Text(
+                subtitle,
+                size=11,
+                color=_difficulty_color(puzzle.difficulty_rating)
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
+            ),
+            on_click=(lambda e, pid=puzzle.id: load_puzzle_by_id(pid))
+            if unlocked
+            else None,
+            disabled=not unlocked,
         )
 
-    puzzle_list_controls = [
-        make_puzzle_tile(i, name, desc)
-        for i, (name, _fen, desc, _clock) in enumerate(PUZZLES)
-    ]
+    # Import UNLOCK_MARGIN for display
+    from puzzle_progress import UNLOCK_MARGIN
 
     # ------------------------------------------------------------------
     # Lichess Daily Puzzle
@@ -1084,11 +1377,19 @@ def main(page: ft.Page):
             game_over, \
             clock_enabled, \
             clock_started, \
-            elo_updated_this_game
+            elo_updated_this_game, \
+            active_puzzle, \
+            puzzle_move_index, \
+            puzzle_start_time, \
+            puzzle_moves_made
         selected = None
         valid_moves = []
         hint_moves = []
         elo_updated_this_game = False
+        active_puzzle = None  # Lichess puzzles use their own flow
+        puzzle_move_index = 0
+        puzzle_start_time = 0.0
+        puzzle_moves_made = 0
         clock_enabled = False  # Puzzles have no clock
         clock_started = False
         game_over = (
@@ -1107,6 +1408,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_side_panel_visibility()
         page.update()
 
     def _show_daily_puzzle_dialog(puzzle: LichessDailyPuzzle):
@@ -1243,52 +1545,156 @@ def main(page: ft.Page):
     # Puzzles dialog (local + daily puzzle)
     # ------------------------------------------------------------------
 
-    puzzles_dialog = ft.AlertDialog(
-        title=ft.Text("Puzzles & Scenarios"),
-        content=ft.Container(
+    def _get_puzzles_for_category(category_key: str) -> list[Puzzle]:
+        """Return puzzles for a category key, sorted by difficulty."""
+        if category_key == "all":
+            puzzles = list(PUZZLE_DATABASE)
+        else:
+            cat = PuzzleCategory(category_key)
+            puzzles = [p for p in PUZZLE_DATABASE if p.category == cat]
+        return sorted(
+            puzzles, key=lambda p: (p.difficulty_rating == 0, p.difficulty_rating)
+        )
+
+    def build_puzzle_dialog_content():
+        """Build the puzzle dialog content with category filter, progress, and daily puzzle."""
+        # Player stats header
+        rating = puzzle_progress.player_rating
+        streak = puzzle_progress.current_streak
+        best = puzzle_progress.best_streak
+        solved = puzzle_progress.total_solved
+        attempted = puzzle_progress.total_attempted
+        rate = f"{puzzle_progress.solve_rate:.0%}" if attempted > 0 else "—"
+
+        stats_row = ft.Container(
             content=ft.Column(
                 [
-                    # Daily puzzle button at the top
-                    ft.Container(
-                        content=ft.ListTile(
-                            leading=ft.Icon(
-                                ft.Icons.PUBLIC, color=ft.Colors.DEEP_PURPLE
+                    ft.Row(
+                        [
+                            ft.Text(
+                                "Your Rating: ", size=14, weight=ft.FontWeight.W_500
                             ),
-                            title=ft.Text(
-                                "Lichess Daily Puzzle",
-                                size=14,
-                                weight=ft.FontWeight.W_600,
-                                color=ft.Colors.DEEP_PURPLE,
+                            ft.Text(
+                                str(rating),
+                                size=16,
+                                weight=ft.FontWeight.BOLD,
+                                color=_difficulty_color(rating),
                             ),
-                            subtitle=ft.Text(
-                                "Fetch today's puzzle from lichess.org",
+                        ],
+                        spacing=4,
+                    ),
+                    ft.Row(
+                        [
+                            ft.Text(
+                                f"Solved: {solved}/{attempted} ({rate})",
                                 size=12,
                                 color=ft.Colors.ON_SURFACE_VARIANT,
                             ),
-                            on_click=do_fetch_daily_puzzle,
-                        ),
-                        bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
-                        border_radius=8,
+                            ft.Text(
+                                f"  Streak: {streak} (Best: {best})",
+                                size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                        ],
+                        spacing=4,
                     ),
-                    ft.Divider(height=1),
-                    # Existing local puzzles
-                    *puzzle_list_controls,
                 ],
-                scroll=ft.ScrollMode.AUTO,
+                spacing=2,
                 tight=True,
-                spacing=0,
             ),
-            width=400,
-            height=400,
-        ),
-        actions=[
-            ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
-        ],
-        open=False,
-    )
+            padding=ft.padding.only(bottom=8),
+        )
+
+        # Lichess Daily Puzzle button at the top
+        daily_puzzle_tile = ft.Container(
+            content=ft.ListTile(
+                leading=ft.Icon(ft.Icons.PUBLIC, color=ft.Colors.DEEP_PURPLE),
+                title=ft.Text(
+                    "Lichess Daily Puzzle",
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color=ft.Colors.DEEP_PURPLE,
+                ),
+                subtitle=ft.Text(
+                    "Fetch today's puzzle from lichess.org",
+                    size=12,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+                on_click=do_fetch_daily_puzzle,
+            ),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+            border_radius=8,
+        )
+
+        # Puzzle list (refreshed when category changes)
+        puzzle_list_column = ft.Column(scroll=ft.ScrollMode.AUTO, tight=True, spacing=0)
+
+        def refresh_puzzle_list(category_key: str):
+            puzzles = _get_puzzles_for_category(category_key)
+            puzzle_list_column.controls.clear()
+            for p in puzzles:
+                puzzle_list_column.controls.append(make_puzzle_tile(p))
+            try:
+                puzzle_list_column.update()
+            except RuntimeError:
+                pass
+
+        # Start with "All"
+        refresh_puzzle_list("all")
+
+        # Category dropdown
+        category_options = [
+            ft.DropdownOption(key="all", text="All"),
+            ft.DropdownOption(key=PuzzleCategory.CHECKMATE.value, text="Checkmate"),
+            ft.DropdownOption(key=PuzzleCategory.TACTICS.value, text="Tactics"),
+            ft.DropdownOption(key=PuzzleCategory.ENDGAME.value, text="Endgame"),
+            ft.DropdownOption(key=PuzzleCategory.DEFENSE.value, text="Defense"),
+            ft.DropdownOption(key=PuzzleCategory.OPENING.value, text="Opening"),
+            ft.DropdownOption(key=PuzzleCategory.FREE_PLAY.value, text="Free Play"),
+        ]
+
+        def on_category_change(e):
+            refresh_puzzle_list(e.control.value or "all")
+
+        category_dropdown = ft.Dropdown(
+            value="all",
+            options=category_options,
+            width=200,
+            on_select=on_category_change,
+            dense=True,
+        )
+
+        filter_row = ft.Row(
+            [ft.Text("Category:", size=13), category_dropdown],
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+        return ft.Column(
+            [
+                stats_row,
+                daily_puzzle_tile,
+                ft.Divider(height=1),
+                filter_row,
+                ft.Container(content=puzzle_list_column, height=300, expand=True),
+            ],
+            width=480,
+            height=480,
+            tight=True,
+        )
 
     def show_puzzles_dialog(_):
-        page.show_dialog(puzzles_dialog)
+        """Show the puzzle selection dialog with categories and progress."""
+        # Rebuild content each time to reflect latest progress
+        dialog = ft.AlertDialog(
+            title=ft.Text("Puzzles & Scenarios"),
+            content=build_puzzle_dialog_content(),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
+            ],
+            open=False,
+        )
+        page.show_dialog(dialog)
 
     def do_reset_elo(_):
         """Reset the player's ELO rating after confirmation."""
@@ -1477,129 +1883,158 @@ def main(page: ft.Page):
     history_panel = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Rating", size=16, weight=ft.FontWeight.W_600),
-                ft.Row(
-                    [
-                        ft.Text(
-                            ref=elo_rating_text,
-                            value=str(elo_profile.rating),
-                            size=22,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.DEEP_PURPLE,
-                        ),
-                        ft.Text(
-                            ref=elo_label_text,
-                            value=get_difficulty_label(elo_profile.rating),
-                            size=12,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                    ],
-                    spacing=8,
-                    vertical_alignment=ft.CrossAxisAlignment.END,
-                ),
+                # --- ELO Rating section (hidden during puzzles) ---
                 ft.Column(
-                    [
+                    ref=elo_section_ref,
+                    controls=[
+                        ft.Text("Rating", size=16, weight=ft.FontWeight.W_600),
                         ft.Row(
                             [
                                 ft.Text(
-                                    ref=elo_record_text,
-                                    value=f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L",
-                                    size=11,
-                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                    ref=elo_rating_text,
+                                    value=str(elo_profile.rating),
+                                    size=22,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.DEEP_PURPLE,
                                 ),
                                 ft.Text(
-                                    ref=elo_peak_text,
-                                    value=f"Peak: {elo_profile.peak_rating}",
-                                    size=11,
+                                    ref=elo_label_text,
+                                    value=get_difficulty_label(elo_profile.rating),
+                                    size=12,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                 ),
                             ],
                             spacing=8,
-                        ),
-                        ft.Row(
-                            [
-                                ft.Text(
-                                    "Form:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
-                                ),
-                                ft.Text(
-                                    ref=elo_form_text,
-                                    value=get_recent_form(elo_profile),
-                                    size=11,
-                                    weight=ft.FontWeight.W_500,
-                                    color=ft.Colors.ON_SURFACE_VARIANT,
-                                ),
-                            ],
-                            spacing=4,
-                        ),
-                        ft.Row(
-                            [
-                                ft.Text(
-                                    "Try:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
-                                ),
-                                ft.Text(
-                                    ref=elo_recommendation_text,
-                                    value="",
-                                    size=11,
-                                    weight=ft.FontWeight.W_500,
-                                    color=ft.Colors.DEEP_PURPLE,
-                                ),
-                            ],
-                            spacing=4,
-                        ),
-                    ],
-                    spacing=2,
-                    tight=True,
-                ),
-                ft.Divider(height=1),
-                ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
-                ft.Column(
-                    [
-                        eval_bar,
-                        ft.Text(
-                            ref=eval_text,
-                            value="+0.00",
-                            size=14,
-                            weight=ft.FontWeight.W_500,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    ],
-                    spacing=4,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                ft.Divider(height=1),
-                ft.Text("Opening", size=16, weight=ft.FontWeight.W_600),
-                ft.Column(
-                    [
-                        ft.Text(
-                            ref=opening_name_text,
-                            value="No opening identified",
-                            size=14,
-                            weight=ft.FontWeight.NORMAL,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                        ft.Text(
-                            ref=opening_desc_text,
-                            value="",
-                            size=12,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                        ft.Text(
-                            "Common moves:",
-                            size=12,
-                            weight=ft.FontWeight.W_500,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
+                            vertical_alignment=ft.CrossAxisAlignment.END,
                         ),
                         ft.Column(
-                            ref=common_moves_column,
-                            controls=[],
+                            [
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            ref=elo_record_text,
+                                            value=f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_peak_text,
+                                            value=f"Peak: {elo_profile.peak_rating}",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                    ],
+                                    spacing=8,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            "Form:",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_form_text,
+                                            value=get_recent_form(elo_profile),
+                                            size=11,
+                                            weight=ft.FontWeight.W_500,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                    ],
+                                    spacing=4,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            "Try:",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_recommendation_text,
+                                            value="",
+                                            size=11,
+                                            weight=ft.FontWeight.W_500,
+                                            color=ft.Colors.DEEP_PURPLE,
+                                        ),
+                                    ],
+                                    spacing=4,
+                                ),
+                            ],
                             spacing=2,
                             tight=True,
                         ),
+                        ft.Divider(height=1),
                     ],
-                    spacing=4,
+                    spacing=8,
                     tight=True,
                 ),
-                ft.Divider(height=1),
+                # --- Evaluation section (hidden during puzzles) ---
+                ft.Column(
+                    ref=eval_section_ref,
+                    controls=[
+                        ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
+                        ft.Column(
+                            [
+                                eval_bar,
+                                ft.Text(
+                                    ref=eval_text,
+                                    value="+0.00",
+                                    size=14,
+                                    weight=ft.FontWeight.W_500,
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
+                            ],
+                            spacing=4,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        ft.Divider(height=1),
+                    ],
+                    spacing=8,
+                    tight=True,
+                ),
+                # --- Opening section (hidden during puzzles) ---
+                ft.Column(
+                    ref=opening_section_ref,
+                    controls=[
+                        ft.Text("Opening", size=16, weight=ft.FontWeight.W_600),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    ref=opening_name_text,
+                                    value="No opening identified",
+                                    size=14,
+                                    weight=ft.FontWeight.NORMAL,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Text(
+                                    ref=opening_desc_text,
+                                    value="",
+                                    size=12,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Text(
+                                    "Common moves:",
+                                    size=12,
+                                    weight=ft.FontWeight.W_500,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Column(
+                                    ref=common_moves_column,
+                                    controls=[],
+                                    spacing=2,
+                                    tight=True,
+                                ),
+                            ],
+                            spacing=4,
+                            tight=True,
+                        ),
+                        ft.Divider(height=1),
+                    ],
+                    spacing=8,
+                    tight=True,
+                ),
+                # --- Moves section (always visible) ---
                 ft.Text("Moves", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     controls=[
