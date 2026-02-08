@@ -859,9 +859,7 @@ def main(page: ft.Page):
             clock_enabled = current_puzzle.clock_enabled
             clock_started = current_puzzle.clock_enabled and game.can_undo()
             game_over = (
-                game.is_checkmate()
-                or game.is_stalemate()
-                or game.is_only_kings_left()
+                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
             )
             # Show puzzle info in status
             if current_puzzle.objective != PuzzleObjective.FREE_PLAY:
@@ -1264,7 +1262,9 @@ def main(page: ft.Page):
     def show_new_game_dialog(_):
         if active_puzzle is not None:
             title = "Restart puzzle"
-            content = f"Restart \"{active_puzzle.name}\"? Your current progress will be lost."
+            content = (
+                f'Restart "{active_puzzle.name}"? Your current progress will be lost.'
+            )
             confirm_label = "Restart"
         else:
             title = "New game"
