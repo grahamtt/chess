@@ -1627,9 +1627,7 @@ def main(page: ft.Page):
         )
 
         # Puzzle list (refreshed when category changes)
-        puzzle_list_column = ft.Column(
-            scroll=ft.ScrollMode.AUTO, tight=True, spacing=0
-        )
+        puzzle_list_column = ft.Column(scroll=ft.ScrollMode.AUTO, tight=True, spacing=0)
 
         def refresh_puzzle_list(category_key: str):
             puzzles = _get_puzzles_for_category(category_key)
