@@ -129,8 +129,8 @@ class TestCalculateNewRating:
 
     def test_k_factor_affects_magnitude(self):
         """Higher K-factor (fewer games) should cause larger rating changes."""
-        new_high_k = calculate_new_rating(1200, 1200, 1.0, 0)   # K=40
-        new_low_k = calculate_new_rating(1200, 1200, 1.0, 50)   # K=24
+        new_high_k = calculate_new_rating(1200, 1200, 1.0, 0)  # K=40
+        new_low_k = calculate_new_rating(1200, 1200, 1.0, 50)  # K=24
         gain_high = new_high_k - 1200
         gain_low = new_low_k - 1200
         assert gain_high > gain_low

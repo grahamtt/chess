@@ -13,7 +13,6 @@ from puzzles import PUZZLES
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
 from elo import (
-    BOT_ELO,
     EloProfile,
     get_bot_display_name,
     get_bot_elo,
@@ -134,9 +133,7 @@ def main(page: ft.Page):
             rec_key = recommend_opponent(elo_profile.rating)
             rec_name = get_bot_display_name(rec_key)
             rec_elo = get_bot_elo(rec_key)
-            elo_recommendation_text.current.value = (
-                f"{rec_name} (~{rec_elo})"
-            )
+            elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
             try:
                 elo_recommendation_text.current.update()
             except RuntimeError:
@@ -1103,17 +1100,38 @@ def main(page: ft.Page):
             opp_elo = rec.get("opponent_elo", "?")
             before = rec.get("rating_before", "?")
             after = rec.get("rating_after", "?")
-            delta = after - before if isinstance(after, int) and isinstance(before, int) else 0
+            delta = (
+                after - before
+                if isinstance(after, int) and isinstance(before, int)
+                else 0
+            )
             delta_str = f"+{delta}" if delta >= 0 else str(delta)
             delta_color = ft.Colors.GREEN if delta >= 0 else ft.Colors.RED
 
             controls.append(
                 ft.Row(
                     [
-                        ft.Text(result_str, size=12, color=result_color, width=35, weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            result_str,
+                            size=12,
+                            color=result_color,
+                            width=35,
+                            weight=ft.FontWeight.W_500,
+                        ),
                         ft.Text(f"vs {opp_name} (~{opp_elo})", size=12, expand=True),
-                        ft.Text(f"{before}→{after}", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(delta_str, size=12, color=delta_color, weight=ft.FontWeight.W_500, width=40, text_align=ft.TextAlign.RIGHT),
+                        ft.Text(
+                            f"{before}→{after}",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Text(
+                            delta_str,
+                            size=12,
+                            color=delta_color,
+                            weight=ft.FontWeight.W_500,
+                            width=40,
+                            text_align=ft.TextAlign.RIGHT,
+                        ),
                     ],
                     spacing=6,
                 )
@@ -1258,7 +1276,9 @@ def main(page: ft.Page):
                         ),
                         ft.Row(
                             [
-                                ft.Text("Form:", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(
+                                    "Form:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                                ),
                                 ft.Text(
                                     ref=elo_form_text,
                                     value=get_recent_form(elo_profile),
@@ -1271,7 +1291,9 @@ def main(page: ft.Page):
                         ),
                         ft.Row(
                             [
-                                ft.Text("Try:", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(
+                                    "Try:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                                ),
                                 ft.Text(
                                     ref=elo_recommendation_text,
                                     value="",

@@ -36,8 +36,8 @@ DEFAULT_RATING = 1000
 # K-factor thresholds (number of rated games -> K value)
 # Higher K means bigger rating swings (appropriate for new players)
 K_FACTOR_THRESHOLDS: list[tuple[int, int]] = [
-    (10, 40),   # First 10 games: K=40
-    (30, 32),   # Games 11-30: K=32
+    (10, 40),  # First 10 games: K=40
+    (30, 32),  # Games 11-30: K=32
     (999_999, 24),  # 30+ games: K=24
 ]
 
