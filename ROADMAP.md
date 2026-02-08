@@ -104,7 +104,8 @@ _Bring people together and connect to the wider chess world._
 - Optional: simple server for online play
 - Game lobby, challenge system, and rematch
 
-### Lichess API Integration
+### Lichess API Integration (started)
+- **Daily Puzzle** — fetch and play the Lichess Puzzle of the Day (`lichess.py`) ✅
 - Import games from Lichess for analysis
 - Play against Lichess bots or in rated games
 - Sync puzzle progress with Lichess puzzle database
