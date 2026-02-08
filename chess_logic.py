@@ -188,6 +188,37 @@ class ChessGame:
         scored_moves.sort(key=lambda x: x[0], reverse=True)
         return [(move, score, san) for score, move, san in scored_moves[:top_n]]
 
+    def get_initial_fen(self) -> str:
+        """Return the FEN of the position before any moves were made.
+
+        This is needed for saving/restoring game state with full move history.
+        """
+        temp = self._board.copy()
+        while temp.move_stack:
+            temp.pop()
+        return temp.fen()
+
+    def get_moves_uci(self) -> list[str]:
+        """Return all moves made as UCI strings (e.g. ['e2e4', 'e7e5', ...])."""
+        return [m.uci() for m in self._board.move_stack]
+
+    def load_from_moves(self, initial_fen: str, moves_uci: list[str]) -> bool:
+        """Restore game state from an initial FEN and a list of UCI moves.
+
+        Returns True if the state was fully restored, False on any error.
+        """
+        try:
+            self._board.set_fen(initial_fen)
+            for uci in moves_uci:
+                move = chess.Move.from_uci(uci)
+                if move not in self._board.legal_moves:
+                    return False
+                self._board.push(move)
+            return True
+        except (ValueError, TypeError, AttributeError):
+            self._board.reset()
+            return False
+
     def get_position_evaluation(self, depth: int = 2) -> int:
         """
         Get position evaluation in centipawns from white's perspective.

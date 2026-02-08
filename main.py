@@ -11,6 +11,7 @@ from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from puzzles import PUZZLES
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
+from game_state import GameState, clear_game_state, load_game_state, save_game_state
 
 LIGHT_SQUARE = "#f0d9b5"
 DARK_SQUARE = "#b58863"
@@ -78,6 +79,21 @@ def main(page: ft.Page):
 
     def is_bot_vs_bot() -> bool:
         return white_player != "human" and black_player != "human"
+
+    def save_current_state():
+        """Persist the full game state to disk (called after every move)."""
+        state = GameState(
+            initial_fen=game.get_initial_fen(),
+            moves_uci=game.get_moves_uci(),
+            white_player=white_player,
+            black_player=black_player,
+            time_control_secs=time_control_secs,
+            white_remaining_secs=white_remaining_secs,
+            black_remaining_secs=black_remaining_secs,
+            clock_enabled=clock_enabled,
+            clock_started=clock_started,
+        )
+        save_game_state(state)
 
     def format_clock(seconds: float) -> str:
         """Format remaining time as M:SS or 0:00 when out of time."""
@@ -306,6 +322,7 @@ def main(page: ft.Page):
                 update_history()
                 update_evaluation_bar()
                 update_opening_explorer()
+                save_current_state()
                 refresh_board()
                 page.update()
                 if not game_over and not is_human_turn():
@@ -364,6 +381,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        save_current_state()
         refresh_board()
         page.update()
 
@@ -393,6 +411,7 @@ def main(page: ft.Page):
                 update_history()
                 update_evaluation_bar()
                 update_opening_explorer()
+                save_current_state()
                 refresh_board()
                 page.update()
                 if game_over:
@@ -500,6 +519,7 @@ def main(page: ft.Page):
         move_start_time = time.monotonic()
         message.current.value = "White to move."
         message.current.color = ft.Colors.BLACK
+        clear_game_state()
         update_clock_display()
         refresh_board()
         update_undo_button()
@@ -530,6 +550,7 @@ def main(page: ft.Page):
             clock_started = game.can_undo()
         update_status()
         update_clock_display()
+        save_current_state()
         refresh_board()
         update_undo_button()
         update_history()
@@ -760,6 +781,7 @@ def main(page: ft.Page):
         update_status()
         update_clock_display()
         update_evaluation_bar()
+        save_current_state()
         page.update()
         if game_over:
             return
@@ -865,6 +887,7 @@ def main(page: ft.Page):
         )
         update_status()
         update_clock_display()
+        save_current_state()
         refresh_board()
         update_undo_button()
         update_history()
@@ -1076,6 +1099,22 @@ def main(page: ft.Page):
             ),
         ],
     )
+
+    # --- Restore saved game state on startup ---
+    _saved = load_game_state()
+    if _saved is not None:
+        if game.load_from_moves(_saved.initial_fen, _saved.moves_uci):
+            white_player = _saved.white_player
+            black_player = _saved.black_player
+            time_control_secs = _saved.time_control_secs
+            white_remaining_secs = _saved.white_remaining_secs
+            black_remaining_secs = _saved.black_remaining_secs
+            clock_enabled = _saved.clock_enabled
+            clock_started = _saved.clock_started
+            move_start_time = time.monotonic()
+            game_over = (
+                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+            )
 
     update_status()
     page.add(
