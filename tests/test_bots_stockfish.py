@@ -9,7 +9,7 @@ guard) runs against a real Stockfish binary when available.
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import chess
 import chess.engine
@@ -463,7 +463,9 @@ class TestStockfishEloIntegration(unittest.TestCase):
         for i in range(1, 9):
             key = f"stockfish_{i}"
             self.assertIn(key, BOT_ELO, f"{key} missing from BOT_ELO")
-            self.assertIn(key, BOT_DISPLAY_NAMES, f"{key} missing from BOT_DISPLAY_NAMES")
+            self.assertIn(
+                key, BOT_DISPLAY_NAMES, f"{key} missing from BOT_DISPLAY_NAMES"
+            )
             self.assertGreater(BOT_ELO[key], 0)
 
     def test_stockfish_elo_ordering(self):

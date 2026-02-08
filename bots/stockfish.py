@@ -86,14 +86,14 @@ def is_stockfish_available() -> bool:
 # Skill Level ranges from 0 (weakest) to 20 (strongest) in Stockfish.
 # Think time caps how long the engine is allowed to ponder per move.
 DIFFICULTY_PRESETS: dict[str, tuple[int, float, int]] = {
-    "stockfish_1": (1, 0.05, 1200),   # Beginner: very low skill, instant
-    "stockfish_2": (3, 0.1, 1400),    # Casual: low skill, fast
-    "stockfish_3": (5, 0.2, 1600),    # Intermediate
-    "stockfish_4": (8, 0.3, 1800),    # Advanced
-    "stockfish_5": (11, 0.5, 2000),   # Strong club player
-    "stockfish_6": (14, 0.8, 2200),   # Expert
-    "stockfish_7": (17, 1.0, 2500),   # Master
-    "stockfish_8": (20, 1.5, 2800),   # Full strength
+    "stockfish_1": (1, 0.05, 1200),  # Beginner: very low skill, instant
+    "stockfish_2": (3, 0.1, 1400),  # Casual: low skill, fast
+    "stockfish_3": (5, 0.2, 1600),  # Intermediate
+    "stockfish_4": (8, 0.3, 1800),  # Advanced
+    "stockfish_5": (11, 0.5, 2000),  # Strong club player
+    "stockfish_6": (14, 0.8, 2200),  # Expert
+    "stockfish_7": (17, 1.0, 2500),  # Master
+    "stockfish_8": (20, 1.5, 2800),  # Full strength
 }
 
 
@@ -171,11 +171,13 @@ class StockfishBot:
         try:
             engine = chess.engine.SimpleEngine.popen_uci(self._path)
             # Configure engine options
-            engine.configure({
-                "Threads": self.threads,
-                "Hash": self.hash_mb,
-                "Skill Level": self.skill_level,
-            })
+            engine.configure(
+                {
+                    "Threads": self.threads,
+                    "Hash": self.hash_mb,
+                    "Skill Level": self.skill_level,
+                }
+            )
             self._engine = engine
             return engine
         except (chess.engine.EngineTerminatedError, FileNotFoundError, OSError) as exc:
