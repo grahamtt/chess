@@ -28,6 +28,14 @@ BOT_ELO: dict[str, int] = {
     "minimax_2": 1300,
     "minimax_3": 1500,
     "minimax_4": 1700,
+    "stockfish_1": 1200,
+    "stockfish_2": 1400,
+    "stockfish_3": 1600,
+    "stockfish_4": 1800,
+    "stockfish_5": 2000,
+    "stockfish_6": 2200,
+    "stockfish_7": 2500,
+    "stockfish_8": 2800,
 }
 
 # Default starting ELO for a new player
@@ -52,6 +60,14 @@ BOT_DISPLAY_NAMES: dict[str, str] = {
     "minimax_2": "Minimax 2",
     "minimax_3": "Minimax 3",
     "minimax_4": "Minimax 4",
+    "stockfish_1": "Stockfish 1",
+    "stockfish_2": "Stockfish 2",
+    "stockfish_3": "Stockfish 3",
+    "stockfish_4": "Stockfish 4",
+    "stockfish_5": "Stockfish 5",
+    "stockfish_6": "Stockfish 6",
+    "stockfish_7": "Stockfish 7",
+    "stockfish_8": "Stockfish 8",
 }
 
 

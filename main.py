@@ -27,7 +27,15 @@ from puzzle_progress import (
     load_puzzle_progress,
     save_puzzle_progress,
 )
-from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
+from bots import (
+    BotBot,
+    ChessBot,
+    DIFFICULTY_PRESETS,
+    MinimaxBot,
+    SimpleBot,
+    StockfishBot,
+    is_stockfish_available,
+)
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
 from elo import (
     EloProfile,
@@ -101,6 +109,15 @@ def main(page: ft.Page):
         "minimax_3": MinimaxBot(depth=3, randomness=0.3),
         "minimax_4": MinimaxBot(depth=4, randomness=0.3),
     }
+
+    # Register Stockfish bots (only if the binary is found on this system)
+    _stockfish_available = is_stockfish_available()
+    if _stockfish_available:
+        for _sf_key, (_sf_skill, _sf_time, _sf_elo) in DIFFICULTY_PRESETS.items():
+            player_bots[_sf_key] = StockfishBot(
+                skill_level=_sf_skill,
+                think_time=_sf_time,
+            )
 
     # ELO rating system
     elo_profile: EloProfile = load_elo_profile()
@@ -1095,6 +1112,19 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_3", text="Minimax 3"),
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
     ]
+    if _stockfish_available:
+        player_options.extend(
+            [
+                ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
+                ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
+                ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
+                ft.DropdownOption(key="stockfish_4", text="Stockfish 4 (~1800)"),
+                ft.DropdownOption(key="stockfish_5", text="Stockfish 5 (~2000)"),
+                ft.DropdownOption(key="stockfish_6", text="Stockfish 6 (~2200)"),
+                ft.DropdownOption(key="stockfish_7", text="Stockfish 7 (~2500)"),
+                ft.DropdownOption(key="stockfish_8", text="Stockfish 8 (Max)"),
+            ]
+        )
     time_options = [
         ft.DropdownOption(key="unlimited", text="Unlimited"),
         ft.DropdownOption(key="60", text="1 min"),
