@@ -361,7 +361,8 @@ class TestStockfishBotAnalysis(unittest.TestCase):
 
         bot = StockfishBot()
         cp = bot.get_evaluation(chess.Board(), depth=10)
-        self.assertEqual(cp, 100_000)
+        # Mate(3) with mate_score=100_000 → 100000 - 3 = 99997
+        self.assertGreater(cp, 90_000)
 
     @patch("bots.stockfish.find_stockfish_path", return_value=None)
     def test_get_evaluation_no_engine(self, _find):

@@ -158,9 +158,10 @@ class TestRecommendOpponent:
         assert rec == "minimax_1"
 
     def test_strong(self):
-        """Very strong player should face the strongest bot."""
+        """Very strong player should face the closest bot by ELO."""
         rec = recommend_opponent(2000)
-        assert rec == "minimax_4"
+        # stockfish_5 is rated exactly 2000
+        assert rec == "stockfish_5"
 
     def test_exact_bot_elo(self):
         """Player exactly at a bot's ELO should recommend that bot."""
