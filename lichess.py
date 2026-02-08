@@ -347,10 +347,29 @@ def _parse_fen_event(data: dict) -> LichessTvFenEvent:
 # ---------------------------------------------------------------------------
 
 
+def _tv_feed_url(channel: str | None = None) -> str:
+    """Return the TV feed URL, optionally for a specific channel.
+
+    Lichess exposes per-channel feeds at ``/api/tv/{channel}/feed`` where
+    *channel* is a lowercase channel name (e.g. ``"bullet"``, ``"blitz"``).
+    When *channel* is ``None`` or empty the default top-rated feed is used.
+    """
+    if channel:
+        safe = channel.strip().capitalize()
+        return f"https://lichess.org/api/tv/{safe}/feed"
+    return TV_FEED_URL
+
+
 def stream_tv_feed(
+    channel: str | None = None,
     timeout: float = TV_STREAM_TIMEOUT,
 ) -> Generator[LichessTvGame | LichessTvFenEvent, None, None]:
     """Stream the Lichess TV feed, yielding game and position events.
+
+    Args:
+        channel: Optional channel name (e.g. ``"Bullet"``, ``"Blitz"``).
+                 When ``None`` the default top-rated feed is used.
+        timeout: Read/connect timeout in seconds.
 
     This is a **blocking generator** that connects to the Lichess TV NDJSON
     stream and yields events one at a time:
@@ -370,10 +389,11 @@ def stream_tv_feed(
             elif isinstance(event, LichessTvFenEvent):
                 print(f"FEN: {event.fen}  last move: {event.last_move_uci}")
     """
+    url = _tv_feed_url(channel)
     try:
         with httpx.stream(
             "GET",
-            TV_FEED_URL,
+            url,
             headers={"Accept": "application/x-ndjson"},
             timeout=httpx.Timeout(timeout, connect=timeout, read=timeout),
         ) as resp:
@@ -455,17 +475,23 @@ def fetch_tv_channels(
 
 
 def fetch_tv_current_game(
+    channel: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> LichessTvGame | None:
     """Fetch metadata for the current Lichess TV game (non-streaming).
 
+    Args:
+        channel: Optional channel name (e.g. ``"Bullet"``).
+        timeout: Read/connect timeout in seconds.
+
     Connects to the TV feed, reads only the first ``featured`` event, and
     returns the resulting :class:`LichessTvGame`.  Returns ``None`` on error.
     """
+    url = _tv_feed_url(channel)
     try:
         with httpx.stream(
             "GET",
-            TV_FEED_URL,
+            url,
             headers={"Accept": "application/x-ndjson"},
             timeout=httpx.Timeout(timeout, connect=timeout, read=timeout),
         ) as resp:

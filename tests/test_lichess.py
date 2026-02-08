@@ -27,6 +27,7 @@ from lichess import (
     _parse_fen_event,
     _parse_tv_player,
     _pgn_to_board,
+    _tv_feed_url,
     fetch_daily_puzzle,
     fetch_tv_channels,
     fetch_tv_current_game,
@@ -1143,3 +1144,65 @@ class TestTvFeedIntegration:
         # Clocks should be ticking down
         assert events[2].black_clock == 176
         assert events[3].white_clock == 175
+
+
+# ---------------------------------------------------------------------------
+# _tv_feed_url tests
+# ---------------------------------------------------------------------------
+
+
+class TestTvFeedUrl:
+    """Tests for the _tv_feed_url helper."""
+
+    def test_default_url(self):
+        assert _tv_feed_url() == TV_FEED_URL
+        assert _tv_feed_url(None) == TV_FEED_URL
+        assert _tv_feed_url("") == TV_FEED_URL
+
+    def test_channel_url(self):
+        assert _tv_feed_url("Bullet") == "https://lichess.org/api/tv/Bullet/feed"
+
+    def test_channel_capitalized(self):
+        assert _tv_feed_url("blitz") == "https://lichess.org/api/tv/Blitz/feed"
+
+    def test_channel_with_whitespace(self):
+        assert _tv_feed_url("  rapid  ") == "https://lichess.org/api/tv/Rapid/feed"
+
+
+# ---------------------------------------------------------------------------
+# Channel-based streaming tests
+# ---------------------------------------------------------------------------
+
+
+class TestStreamTvFeedWithChannel:
+    """Tests for stream_tv_feed and fetch_tv_current_game with a channel."""
+
+    @patch("lichess.httpx.stream")
+    def test_stream_passes_channel_url(self, mock_stream):
+        lines = [json.dumps(SAMPLE_FEATURED_EVENT)]
+        mock_stream.return_value = _MockStreamResponse(lines)
+
+        events = list(stream_tv_feed(channel="Bullet"))
+        assert len(events) == 1
+        # Verify the URL passed to httpx.stream includes the channel
+        call_args = mock_stream.call_args
+        assert call_args[0][1] == "https://lichess.org/api/tv/Bullet/feed"
+
+    @patch("lichess.httpx.stream")
+    def test_stream_default_channel_uses_main_feed(self, mock_stream):
+        lines = [json.dumps(SAMPLE_FEATURED_EVENT)]
+        mock_stream.return_value = _MockStreamResponse(lines)
+
+        list(stream_tv_feed(channel=None))
+        call_args = mock_stream.call_args
+        assert call_args[0][1] == TV_FEED_URL
+
+    @patch("lichess.httpx.stream")
+    def test_fetch_current_game_passes_channel_url(self, mock_stream):
+        lines = [json.dumps(SAMPLE_FEATURED_EVENT)]
+        mock_stream.return_value = _MockStreamResponse(lines)
+
+        game = fetch_tv_current_game(channel="Rapid")
+        assert game is not None
+        call_args = mock_stream.call_args
+        assert call_args[0][1] == "https://lichess.org/api/tv/Rapid/feed"

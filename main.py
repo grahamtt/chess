@@ -1395,13 +1395,15 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------
     tv_game: LichessTvGame | None = None  # Current TV game metadata
     tv_stop_requested = False  # Signal to stop the streaming background task
+    tv_channel: str | None = None  # Selected channel name, or None for default
 
     def _stop_tv_stream():
         """Stop the Lichess TV stream if running."""
-        nonlocal tv_watching, tv_stop_requested, tv_game
+        nonlocal tv_watching, tv_stop_requested, tv_game, tv_channel
         tv_stop_requested = True
         tv_watching = False
         tv_game = None
+        tv_channel = None
 
     def _update_tv_board(fen: str, last_move_uci: str, wc: int, bc: int):
         """Apply a TV position update to the board display."""
@@ -1483,11 +1485,12 @@ def main(page: ft.Page):
 
         tv_stop_requested = False
         tv_watching = True
+        selected_channel = tv_channel  # capture at start
 
         def _stream_in_thread(events_out: list, stop_flag: list):
             """Run the blocking stream generator in a background thread."""
             try:
-                for event in stream_tv_feed():
+                for event in stream_tv_feed(channel=selected_channel):
                     if stop_flag[0]:
                         break
                     events_out.append(event)
@@ -1529,16 +1532,18 @@ def main(page: ft.Page):
             tv_watching = False
             thread.join(timeout=2)
 
-    def _do_start_tv(_):
+    def _do_start_tv(_, channel_name: str | None = None):
         """Start watching Lichess TV (called from UI)."""
-        nonlocal tv_watching, white_player, black_player
+        nonlocal tv_watching, white_player, black_player, tv_channel
         page.pop_dialog()
         if tv_watching:
             return
         # Set both players to "human" so no bot intervenes
         white_player = "human"
         black_player = "human"
-        message.current.value = "Connecting to Lichess TV…"
+        tv_channel = channel_name
+        label = channel_name or "Top Rated"
+        message.current.value = f"Connecting to Lichess TV ({label})…"
         message.current.color = ft.Colors.TEAL
         page.update()
         page.run_task(_run_tv_stream)
@@ -1594,39 +1599,87 @@ def main(page: ft.Page):
             message.current.value = f"{game.turn.capitalize()} to move."
             message.current.color = ft.Colors.BLACK
 
-        # Build channel list
-        channel_controls = []
-        for ch in channels:
-            channel_controls.append(
-                ft.ListTile(
-                    leading=ft.Icon(ft.Icons.LIVE_TV, color=ft.Colors.TEAL, size=20),
-                    title=ft.Text(
-                        ch.channel_name,
-                        size=14,
-                        weight=ft.FontWeight.W_500,
+        # --- Selectable channel list with highlight ---
+        # selected_channel[0] holds the currently selected channel name (None = Top Rated)
+        selected_channel: list[str | None] = [None]
+        channel_list_column = ft.Column(scroll=ft.ScrollMode.AUTO, tight=True, spacing=0)
+
+        def _build_channel_tiles():
+            """Rebuild channel tiles with current selection highlight."""
+            channel_list_column.controls.clear()
+
+            # "Top Rated" entry (default — uses the main /api/tv/feed)
+            is_top = selected_channel[0] is None
+            channel_list_column.controls.append(
+                ft.Container(
+                    content=ft.ListTile(
+                        leading=ft.Icon(
+                            ft.Icons.STAR,
+                            color=ft.Colors.TEAL if is_top else ft.Colors.ON_SURFACE_VARIANT,
+                            size=20,
+                        ),
+                        title=ft.Text(
+                            "Top Rated",
+                            size=14,
+                            weight=ft.FontWeight.W_600 if is_top else ft.FontWeight.W_500,
+                            color=ft.Colors.TEAL if is_top else ft.Colors.ON_SURFACE,
+                        ),
+                        subtitle=ft.Text(
+                            "The highest-rated game currently in progress",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        on_click=lambda e: _select_channel(None),
                     ),
-                    subtitle=ft.Text(
-                        f"{ch.user_name} ({ch.rating})" if ch.user_name else "—",
-                        size=12,
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
+                    bgcolor=ft.Colors.TEAL_50 if is_top else None,
+                    border_radius=8,
                 )
             )
 
-        if not channel_controls:
-            channel_controls.append(
-                ft.Text(
-                    "No channels available",
-                    size=13,
-                    color=ft.Colors.ON_SURFACE_VARIANT,
+            for ch in channels:
+                is_sel = selected_channel[0] == ch.channel_name
+                channel_list_column.controls.append(
+                    ft.Container(
+                        content=ft.ListTile(
+                            leading=ft.Icon(
+                                ft.Icons.LIVE_TV,
+                                color=ft.Colors.TEAL if is_sel else ft.Colors.ON_SURFACE_VARIANT,
+                                size=20,
+                            ),
+                            title=ft.Text(
+                                ch.channel_name,
+                                size=14,
+                                weight=ft.FontWeight.W_600 if is_sel else ft.FontWeight.W_500,
+                                color=ft.Colors.TEAL if is_sel else ft.Colors.ON_SURFACE,
+                            ),
+                            subtitle=ft.Text(
+                                f"{ch.user_name} ({ch.rating})" if ch.user_name else "—",
+                                size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                            on_click=lambda e, name=ch.channel_name: _select_channel(name),
+                        ),
+                        bgcolor=ft.Colors.TEAL_50 if is_sel else None,
+                        border_radius=8,
+                    )
                 )
-            )
+
+        def _select_channel(name: str | None):
+            selected_channel[0] = name
+            _build_channel_tiles()
+            try:
+                channel_list_column.update()
+            except RuntimeError:
+                pass
+
+        # Initial build
+        _build_channel_tiles()
 
         content = ft.Column(
             [
                 ft.Container(
                     content=ft.Text(
-                        "Watch the top-rated game currently being played on Lichess. "
+                        "Select a channel and click Watch to stream a live game. "
                         "The board will update in real time as moves are made.",
                         size=13,
                         color=ft.Colors.ON_SURFACE_VARIANT,
@@ -1634,25 +1687,18 @@ def main(page: ft.Page):
                     padding=ft.padding.only(bottom=8),
                 ),
                 ft.Divider(height=1),
-                ft.Text(
-                    "Current Channels",
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                ),
                 ft.Container(
-                    content=ft.Column(
-                        channel_controls,
-                        scroll=ft.ScrollMode.AUTO,
-                        tight=True,
-                        spacing=0,
-                    ),
-                    height=240,
+                    content=channel_list_column,
+                    height=280,
                 ),
             ],
             tight=True,
             spacing=8,
             width=400,
         )
+
+        def _on_watch(e):
+            _do_start_tv(e, channel_name=selected_channel[0])
 
         tv_dialog = ft.AlertDialog(
             title=ft.Row(
@@ -1665,7 +1711,7 @@ def main(page: ft.Page):
             content=content,
             actions=[
                 ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
-                ft.TextButton("Watch", on_click=_do_start_tv),
+                ft.TextButton("Watch", on_click=_on_watch),
             ],
             open=False,
         )
