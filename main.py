@@ -233,10 +233,15 @@ def main(page: ft.Page):
     def get_board_flipped() -> bool:
         """Determine if the board should be shown from black's perspective.
 
+        - Lichess TV: use the orientation provided by the server.
         - Human vs Computer: permanently orient for the human player.
         - Human vs Human: orient for the player whose turn it is.
         - Bot vs Bot: always show from white's perspective.
         """
+        if tv_watching:
+            # Use the server-recommended orientation (fixed for the game)
+            return tv_game.orientation == "black" if tv_game else False
+
         white_is_human = white_player == "human"
         black_is_human = black_player == "human"
 
