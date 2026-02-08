@@ -4,11 +4,15 @@ A two-player chess game built with [Flet](https://flet.dev), using custom SVG pi
 
 ## Setup
 
-Using [uv](https://docs.astral.sh/uv/):
+Using [uv](https://docs.astral.sh/uv/) and [mise](https://mise.jdx.dev/):
 
 ```bash
 uv sync
+uv run pre-commit install   # install git hooks for formatting, linting & test checks
 ```
+
+If you use [mise](https://mise.jdx.dev/), the pre-commit hooks are installed automatically
+when you enter the project directory.
 
 Or create a venv and install manually:
 
@@ -16,6 +20,7 @@ Or create a venv and install manually:
 uv venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 uv pip install -e .
+pre-commit install
 ```
 
 ## Run
