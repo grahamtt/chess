@@ -178,9 +178,7 @@ class PuzzleProgress:
         return "0"
 
 
-def _calculate_new_rating(
-    player_rating: int, puzzle_rating: int, solved: bool
-) -> int:
+def _calculate_new_rating(player_rating: int, puzzle_rating: int, solved: bool) -> int:
     """Calculate new player rating using Elo-like formula.
 
     Args:

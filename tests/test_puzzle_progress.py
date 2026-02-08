@@ -1,9 +1,7 @@
 """Tests for puzzle_progress module: rating calculation, progress tracking, persistence."""
 
 import json
-import math
 import time
-from pathlib import Path
 
 import pytest
 
@@ -11,7 +9,6 @@ from puzzle_progress import (
     DEFAULT_PLAYER_RATING,
     K_FACTOR,
     UNLOCK_MARGIN,
-    PuzzleAttempt,
     PuzzleProgress,
     PuzzleStats,
     _calculate_new_rating,

@@ -673,7 +673,10 @@ PUZZLE_DATABASE: list[Puzzle] = [
         difficulty_rating=1450,
         objective=PuzzleObjective.FIND_BEST_MOVES,
         solution_uci=["e1e8", "c8e8", "b1e1"],
-        hints=["Sacrifice the rook to clear the way.", "The second rook finishes the job."],
+        hints=[
+            "Sacrifice the rook to clear the way.",
+            "The second rook finishes the job.",
+        ],
         completion_message="Back rank combination! Rook sacrifice into mate.",
         failure_message="Both rooks can work together to exploit the back rank.",
     ),
@@ -824,7 +827,9 @@ PUZZLE_DATABASE: list[Puzzle] = [
         difficulty_rating=1950,
         objective=PuzzleObjective.FIND_BEST_MOVES,
         solution_uci=["d3c2"],
-        hints=["Before attacking, make sure your opponent's counterplay is neutralized."],
+        hints=[
+            "Before attacking, make sure your opponent's counterplay is neutralized."
+        ],
         completion_message="Prophylactic thinking! Stopping the opponent's plan first.",
         failure_message="Think about what your opponent wants to do, and prevent it.",
     ),
@@ -941,11 +946,7 @@ def get_puzzles_by_difficulty(
 ) -> list[Puzzle]:
     """Return puzzles within a difficulty range, sorted by rating."""
     return sorted(
-        [
-            p
-            for p in PUZZLE_DATABASE
-            if min_rating <= p.difficulty_rating <= max_rating
-        ],
+        [p for p in PUZZLE_DATABASE if min_rating <= p.difficulty_rating <= max_rating],
         key=lambda p: p.difficulty_rating,
     )
 

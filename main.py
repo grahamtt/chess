@@ -472,6 +472,7 @@ def main(page: ft.Page):
             if selected is not None and (row, col) in valid_moves:
                 # Determine the UCI move the player is making
                 import chess as _chess
+
                 from_sq = _chess.square(selected[1], 7 - selected[0])
                 to_sq = _chess.square(col, 7 - row)
                 # Check for promotion
@@ -480,16 +481,23 @@ def main(page: ft.Page):
                 is_promo = (
                     piece is not None
                     and piece.piece_type == _chess.PAWN
-                    and (_chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0)
+                    and (
+                        _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
+                    )
                 )
                 uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
                 if is_promo:
                     uci_move += "q"  # Default queen promotion for puzzle checks
 
                 # --- Puzzle validation ---
-                if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+                if (
+                    active_puzzle
+                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+                ):
                     puzzle_moves_made += 1
-                    if not active_puzzle.is_player_move_correct(puzzle_move_index, uci_move):
+                    if not active_puzzle.is_player_move_correct(
+                        puzzle_move_index, uci_move
+                    ):
                         # Wrong move — puzzle failed
                         handle_puzzle_failure()
                         selected = None
@@ -514,13 +522,18 @@ def main(page: ft.Page):
                 page.update()
 
                 # --- Puzzle completion check ---
-                if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+                if (
+                    active_puzzle
+                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+                ):
                     if active_puzzle.is_complete_after_player_move(puzzle_move_index):
                         handle_puzzle_completion()
                         page.update()
                         return
                     # Play opponent's automatic response
-                    opponent_uci = active_puzzle.get_opponent_response(puzzle_move_index)
+                    opponent_uci = active_puzzle.get_opponent_response(
+                        puzzle_move_index
+                    )
                     puzzle_move_index += 1
                     if opponent_uci:
                         page.run_task(play_puzzle_opponent_move, opponent_uci)
@@ -676,7 +689,7 @@ def main(page: ft.Page):
         game_over = True
         if active_puzzle:
             elapsed = time.monotonic() - puzzle_start_time
-            attempt = puzzle_progress.record_attempt(
+            puzzle_progress.record_attempt(
                 puzzle_id=active_puzzle.id,
                 puzzle_rating=active_puzzle.difficulty_rating,
                 solved=True,
@@ -701,7 +714,7 @@ def main(page: ft.Page):
         game_over = True
         if active_puzzle:
             elapsed = time.monotonic() - puzzle_start_time
-            attempt = puzzle_progress.record_attempt(
+            puzzle_progress.record_attempt(
                 puzzle_id=active_puzzle.id,
                 puzzle_rating=active_puzzle.difficulty_rating,
                 solved=False,
@@ -1284,26 +1297,36 @@ def main(page: ft.Page):
 
         subtitle = f"{rating_text}{solve_text}"
         if not unlocked:
-            subtitle = f"🔒 Locked — need rating {puzzle.difficulty_rating - UNLOCK_MARGIN}+"
+            subtitle = (
+                f"🔒 Locked — need rating {puzzle.difficulty_rating - UNLOCK_MARGIN}+"
+            )
 
         return ft.ListTile(
             leading=ft.Icon(
                 _category_icon(puzzle.category),
-                color=_difficulty_color(puzzle.difficulty_rating) if unlocked else ft.Colors.ON_SURFACE_VARIANT,
+                color=_difficulty_color(puzzle.difficulty_rating)
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
                 size=20,
             ),
             title=ft.Text(
                 puzzle.name,
                 size=14,
                 weight=ft.FontWeight.W_500,
-                color=ft.Colors.ON_SURFACE if unlocked else ft.Colors.ON_SURFACE_VARIANT,
+                color=ft.Colors.ON_SURFACE
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
             ),
             subtitle=ft.Text(
                 subtitle,
                 size=11,
-                color=_difficulty_color(puzzle.difficulty_rating) if unlocked else ft.Colors.ON_SURFACE_VARIANT,
+                color=_difficulty_color(puzzle.difficulty_rating)
+                if unlocked
+                else ft.Colors.ON_SURFACE_VARIANT,
             ),
-            on_click=(lambda e, pid=puzzle.id: load_puzzle_by_id(pid)) if unlocked else None,
+            on_click=(lambda e, pid=puzzle.id: load_puzzle_by_id(pid))
+            if unlocked
+            else None,
             disabled=not unlocked,
         )
 

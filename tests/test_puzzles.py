@@ -76,9 +76,7 @@ class TestDatabaseIntegrity:
         """Puzzles with a difficulty rating > 0 must have solution moves."""
         for p in PUZZLE_DATABASE:
             if p.difficulty_rating > 0 and p.objective != PuzzleObjective.FREE_PLAY:
-                assert len(p.solution_uci) > 0, (
-                    f"Rated puzzle '{p.id}' has no solution"
-                )
+                assert len(p.solution_uci) > 0, f"Rated puzzle '{p.id}' has no solution"
 
     def test_free_play_puzzles_have_no_solution(self):
         """Free play puzzles should have empty solutions."""
@@ -101,7 +99,9 @@ class TestDatabaseIntegrity:
 
     def test_has_multiple_difficulty_levels(self):
         """Database should span beginner through expert."""
-        labels = {p.difficulty_label for p in PUZZLE_DATABASE if p.difficulty_rating > 0}
+        labels = {
+            p.difficulty_label for p in PUZZLE_DATABASE if p.difficulty_rating > 0
+        }
         assert PuzzleDifficulty.BEGINNER in labels
         assert PuzzleDifficulty.EXPERT in labels
 
