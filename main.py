@@ -56,6 +56,7 @@ DARK_SQUARE = "#b58863"
 HIGHLIGHT = "#7fc97f"
 HIGHLIGHT_CAPTURE = "#f27777"
 SELECTED = "#baca44"
+LAST_MOVE = "#a9d18e"  # Green for last-move highlighting (from & to squares)
 HINT_FROM = "#ffd700"  # Gold for hint source square
 HINT_TO = "#ffa500"  # Orange for hint destination square
 
@@ -458,6 +459,12 @@ def main(page: ft.Page):
             (row, col) == hint_to for _, hint_to, _, _ in hint_moves
         )
 
+        # Check if this square is part of the most recent move
+        last_move = game.get_last_move()
+        is_last_move_square = last_move is not None and (
+            (row, col) == last_move[0] or (row, col) == last_move[1]
+        )
+
         if selected == (row, col):
             bg = SELECTED
         elif is_hint_from:
@@ -466,6 +473,8 @@ def main(page: ft.Page):
             bg = HINT_TO
         elif (row, col) in valid_moves:
             bg = HIGHLIGHT_CAPTURE if cell is not None else HIGHLIGHT
+        elif is_last_move_square:
+            bg = LAST_MOVE
 
         content_list = []
         if cell is not None:
