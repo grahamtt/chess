@@ -12,6 +12,19 @@ from pieces_svg import get_svg
 from puzzles import PUZZLES
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
+from elo import (
+    EloProfile,
+    get_bot_display_name,
+    get_bot_elo,
+    get_difficulty_label,
+    get_recent_form,
+    get_win_rate,
+    load_elo_profile,
+    recommend_opponent,
+    record_game,
+    save_elo_profile,
+    reset_elo_profile,
+)
 
 LIGHT_SQUARE = "#f0d9b5"
 DARK_SQUARE = "#b58863"
@@ -66,6 +79,99 @@ def main(page: ft.Page):
         "minimax_3": MinimaxBot(depth=3, randomness=0.3),
         "minimax_4": MinimaxBot(depth=4, randomness=0.3),
     }
+
+    # ELO rating system
+    elo_profile: EloProfile = load_elo_profile()
+    elo_rating_text = ft.Ref[ft.Text]()
+    elo_label_text = ft.Ref[ft.Text]()
+    elo_form_text = ft.Ref[ft.Text]()
+    elo_record_text = ft.Ref[ft.Text]()
+    elo_peak_text = ft.Ref[ft.Text]()
+    elo_recommendation_text = ft.Ref[ft.Text]()
+    elo_updated_this_game = False  # Guard: only update ELO once per game
+
+    def update_elo_display():
+        """Refresh all ELO-related UI elements."""
+        if elo_rating_text.current is not None:
+            elo_rating_text.current.value = str(elo_profile.rating)
+            try:
+                elo_rating_text.current.update()
+            except RuntimeError:
+                pass
+
+        if elo_label_text.current is not None:
+            elo_label_text.current.value = get_difficulty_label(elo_profile.rating)
+            try:
+                elo_label_text.current.update()
+            except RuntimeError:
+                pass
+
+        if elo_form_text.current is not None:
+            elo_form_text.current.value = get_recent_form(elo_profile)
+            try:
+                elo_form_text.current.update()
+            except RuntimeError:
+                pass
+
+        if elo_record_text.current is not None:
+            elo_record_text.current.value = (
+                f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L"
+            )
+            try:
+                elo_record_text.current.update()
+            except RuntimeError:
+                pass
+
+        if elo_peak_text.current is not None:
+            elo_peak_text.current.value = f"Peak: {elo_profile.peak_rating}"
+            try:
+                elo_peak_text.current.update()
+            except RuntimeError:
+                pass
+
+        if elo_recommendation_text.current is not None:
+            rec_key = recommend_opponent(elo_profile.rating)
+            rec_name = get_bot_display_name(rec_key)
+            rec_elo = get_bot_elo(rec_key)
+            elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
+            try:
+                elo_recommendation_text.current.update()
+            except RuntimeError:
+                pass
+
+    def handle_game_over_elo(result_for_white: float | None):
+        """Update ELO after a game ends (human vs bot only).
+
+        Args:
+            result_for_white: 1.0 if white won, 0.0 if black won, 0.5 if draw,
+                            None if not applicable (bot vs bot or human vs human).
+        """
+        nonlocal elo_updated_this_game
+        if elo_updated_this_game or result_for_white is None:
+            return
+
+        # Determine which side the human is playing and which bot they face
+        human_color = None
+        opponent_key = None
+        if white_player == "human" and black_player != "human":
+            human_color = "white"
+            opponent_key = black_player
+        elif black_player == "human" and white_player != "human":
+            human_color = "black"
+            opponent_key = white_player
+        else:
+            return  # human vs human or bot vs bot: no ELO update
+
+        # Calculate result from human's perspective
+        if human_color == "white":
+            human_result = result_for_white
+        else:
+            human_result = 1.0 - result_for_white
+
+        record_game(elo_profile, opponent_key, human_result)
+        save_elo_profile(elo_profile)
+        elo_updated_this_game = True
+        update_elo_display()
 
     def get_bot_for_turn() -> ChessBot | None:
         if game.turn == "white":
@@ -194,12 +300,14 @@ def main(page: ft.Page):
                 game_over = True
                 message.current.value = "White ran out of time. Black wins."
                 message.current.color = ft.Colors.BLUE
+                handle_game_over_elo(0.0)  # Black wins
         else:
             black_remaining_secs -= elapsed
             if black_remaining_secs <= 0:
                 game_over = True
                 message.current.value = "Black ran out of time. White wins."
                 message.current.color = ft.Colors.BLUE
+                handle_game_over_elo(1.0)  # White wins
         update_clock_display()
 
     async def run_clock():
@@ -220,8 +328,10 @@ def main(page: ft.Page):
                 game_over = True
                 if game.turn == "white":
                     message.current.value = "White ran out of time. Black wins."
+                    handle_game_over_elo(0.0)  # Black wins
                 else:
                     message.current.value = "Black ran out of time. White wins."
+                    handle_game_over_elo(1.0)  # White wins
                 message.current.color = ft.Colors.BLUE
                 update_clock_display()
                 page.update()
@@ -430,14 +540,19 @@ def main(page: ft.Page):
             message.current.value = f"Checkmate! {winner} wins."
             message.current.color = ft.Colors.BLUE
             game_over = True
+            # ELO: white wins = 1.0, black wins = 0.0
+            result_for_white = 0.0 if game.turn == "white" else 1.0
+            handle_game_over_elo(result_for_white)
         elif game.is_stalemate():
             message.current.value = "Stalemate. Draw."
             message.current.color = ft.Colors.ORANGE
             game_over = True
+            handle_game_over_elo(0.5)
         elif game.is_only_kings_left():
             message.current.value = "Draw. Only kings left."
             message.current.color = ft.Colors.ORANGE
             game_over = True
+            handle_game_over_elo(0.5)
         elif game.is_in_check():
             message.current.value = f"{game.turn.capitalize()} is in check."
             message.current.color = ft.Colors.RED
@@ -500,13 +615,15 @@ def main(page: ft.Page):
             black_remaining_secs, \
             move_start_time, \
             clock_enabled, \
-            clock_started
+            clock_started, \
+            elo_updated_this_game
         page.pop_dialog()
         game.reset()
         selected = None
         valid_moves = []
         hint_moves = []
         game_over = False
+        elo_updated_this_game = False
         clock_started = False
         if time_control_secs is None:
             clock_enabled = False
@@ -526,6 +643,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_elo_display()
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
@@ -876,10 +994,12 @@ def main(page: ft.Page):
             hint_moves, \
             game_over, \
             clock_enabled, \
-            clock_started
+            clock_started, \
+            elo_updated_this_game
         selected = None
         valid_moves = []
         hint_moves = []  # Clear hints when loading puzzle
+        elo_updated_this_game = False
         clock_enabled = puzzle_clock_enabled
         clock_started = puzzle_clock_enabled and game.can_undo()
         game_over = (
@@ -927,6 +1047,129 @@ def main(page: ft.Page):
 
     def show_puzzles_dialog(_):
         page.show_dialog(puzzles_dialog)
+
+    def do_reset_elo(_):
+        """Reset the player's ELO rating after confirmation."""
+        nonlocal elo_profile
+        page.pop_dialog()
+        reset_elo_profile()
+        elo_profile = EloProfile()
+        update_elo_display()
+        page.update()
+
+    def _build_elo_history_controls() -> list[ft.Control]:
+        """Build the rating history list for the ELO dialog."""
+        controls = []
+        if not elo_profile.history:
+            controls.append(
+                ft.Text(
+                    "No rated games yet. Play against a bot!",
+                    size=13,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                )
+            )
+            return controls
+
+        win_rate = get_win_rate(elo_profile)
+        if win_rate is not None:
+            controls.append(
+                ft.Text(
+                    f"Win rate: {win_rate:.1f}%  |  Peak: {elo_profile.peak_rating}",
+                    size=13,
+                    weight=ft.FontWeight.W_500,
+                )
+            )
+            controls.append(ft.Divider(height=1))
+
+        # Show last 20 games (most recent first)
+        recent = list(reversed(elo_profile.history[-20:]))
+        for rec in recent:
+            result = rec.get("result", 0.5)
+            if result == 1.0:
+                result_str = "Win"
+                result_color = ft.Colors.GREEN
+            elif result == 0.0:
+                result_str = "Loss"
+                result_color = ft.Colors.RED
+            else:
+                result_str = "Draw"
+                result_color = ft.Colors.ORANGE
+
+            opp = rec.get("opponent", "?")
+            opp_name = get_bot_display_name(opp)
+            opp_elo = rec.get("opponent_elo", "?")
+            before = rec.get("rating_before", "?")
+            after = rec.get("rating_after", "?")
+            delta = (
+                after - before
+                if isinstance(after, int) and isinstance(before, int)
+                else 0
+            )
+            delta_str = f"+{delta}" if delta >= 0 else str(delta)
+            delta_color = ft.Colors.GREEN if delta >= 0 else ft.Colors.RED
+
+            controls.append(
+                ft.Row(
+                    [
+                        ft.Text(
+                            result_str,
+                            size=12,
+                            color=result_color,
+                            width=35,
+                            weight=ft.FontWeight.W_500,
+                        ),
+                        ft.Text(f"vs {opp_name} (~{opp_elo})", size=12, expand=True),
+                        ft.Text(
+                            f"{before}→{after}",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Text(
+                            delta_str,
+                            size=12,
+                            color=delta_color,
+                            weight=ft.FontWeight.W_500,
+                            width=40,
+                            text_align=ft.TextAlign.RIGHT,
+                        ),
+                    ],
+                    spacing=6,
+                )
+            )
+        return controls
+
+    def show_elo_dialog(_):
+        history_controls = _build_elo_history_controls()
+        elo_dialog = ft.AlertDialog(
+            title=ft.Row(
+                [
+                    ft.Text("Rating History", weight=ft.FontWeight.W_600),
+                    ft.Container(expand=True),
+                    ft.Text(
+                        str(elo_profile.rating),
+                        size=20,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.DEEP_PURPLE,
+                    ),
+                ],
+            ),
+            content=ft.Container(
+                content=ft.Column(
+                    history_controls,
+                    scroll=ft.ScrollMode.AUTO,
+                    tight=True,
+                    spacing=4,
+                ),
+                width=420,
+                height=360,
+            ),
+            actions=[
+                ft.TextButton("Reset Rating", on_click=do_reset_elo),
+                ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
+            ],
+            open=False,
+        )
+        page.show_dialog(elo_dialog)
 
     def show_hint(_):
         """Show hint moves for the current position."""
@@ -992,6 +1235,80 @@ def main(page: ft.Page):
     history_panel = ft.Container(
         content=ft.Column(
             [
+                ft.Text("Rating", size=16, weight=ft.FontWeight.W_600),
+                ft.Row(
+                    [
+                        ft.Text(
+                            ref=elo_rating_text,
+                            value=str(elo_profile.rating),
+                            size=22,
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.Colors.DEEP_PURPLE,
+                        ),
+                        ft.Text(
+                            ref=elo_label_text,
+                            value=get_difficulty_label(elo_profile.rating),
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.END,
+                ),
+                ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.Text(
+                                    ref=elo_record_text,
+                                    value=f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L",
+                                    size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Text(
+                                    ref=elo_peak_text,
+                                    value=f"Peak: {elo_profile.peak_rating}",
+                                    size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Text(
+                                    "Form:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                                ),
+                                ft.Text(
+                                    ref=elo_form_text,
+                                    value=get_recent_form(elo_profile),
+                                    size=11,
+                                    weight=ft.FontWeight.W_500,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                        ft.Row(
+                            [
+                                ft.Text(
+                                    "Try:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                                ),
+                                ft.Text(
+                                    ref=elo_recommendation_text,
+                                    value="",
+                                    size=11,
+                                    weight=ft.FontWeight.W_500,
+                                    color=ft.Colors.DEEP_PURPLE,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                    ],
+                    spacing=2,
+                    tight=True,
+                ),
+                ft.Divider(height=1),
                 ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     [
@@ -1081,6 +1398,11 @@ def main(page: ft.Page):
                 on_click=show_hint,
             ),
             ft.IconButton(
+                icon=ft.Icons.LEADERBOARD,
+                tooltip="Rating history",
+                on_click=show_elo_dialog,
+            ),
+            ft.IconButton(
                 icon=ft.Icons.SETTINGS,
                 tooltip="Configuration",
                 on_click=show_config_dialog,
@@ -1152,6 +1474,7 @@ def main(page: ft.Page):
     update_evaluation_bar()
     update_opening_explorer()
     update_clock_display()
+    update_elo_display()
     page.run_task(run_clock)
 
 

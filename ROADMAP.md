@@ -69,10 +69,11 @@ _Features that add strategic depth and learning tools._
 - Show arrows for the engine's preferred continuation
 - Summary statistics (accuracy %, blunder count, average centipawn loss)
 
-### ELO Rating System
-- Local ELO tracking across games played against bots
-- Adjust bot difficulty to approximate ELO ranges
-- Display rating history and progress chart
+### ELO Rating System ✅
+- ~~Local ELO tracking across games played against bots~~
+- ~~Adjust bot difficulty to approximate ELO ranges~~
+- ~~Display rating history and progress chart~~
+- Implemented in `elo.py` with standard ELO formula, dynamic K-factor, persistent JSON profile, and difficulty recommendation
 
 ### Puzzle Rating & Progression
 - Assign difficulty ratings to puzzles (beginner, intermediate, advanced)
