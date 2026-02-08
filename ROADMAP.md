@@ -110,10 +110,10 @@ _Bring people together and connect to the wider chess world._
 
 ### Lichess API Integration (started)
 - **Daily Puzzle** — fetch and play the Lichess Puzzle of the Day (`lichess.py`) ✅
+- **Stream Live Games** — watch Lichess TV with real-time board updates, channel browser, player info and clocks (`lichess.py`, `main.py`) ✅
 - Import games from Lichess for analysis
 - Play against Lichess bots or in rated games
 - Sync puzzle progress with Lichess puzzle database
-- Stream live games
 
 ### Chess.com Integration
 - Import game archives from Chess.com
