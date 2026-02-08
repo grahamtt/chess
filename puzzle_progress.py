@@ -45,23 +45,16 @@ class PuzzleStats:
 
     puzzle_id: str
     attempts: int = 0
-    solves: int = 0
+    solved: bool = False
     best_time_secs: float | None = None
     last_attempted: float | None = None  # timestamp
-
-    @property
-    def solve_rate(self) -> float:
-        """Return solve percentage (0.0 to 1.0)."""
-        if self.attempts == 0:
-            return 0.0
-        return self.solves / self.attempts
 
     def record_attempt(self, solved: bool, time_secs: float) -> None:
         """Record a new attempt."""
         self.attempts += 1
         self.last_attempted = time.time()
         if solved:
-            self.solves += 1
+            self.solved = True
             if self.best_time_secs is None or time_secs < self.best_time_secs:
                 self.best_time_secs = time_secs
 
@@ -240,10 +233,14 @@ def _dict_to_progress(data: dict) -> PuzzleProgress:
     )
 
     for pid, stats_data in data.get("puzzle_stats", {}).items():
+        # Backward compat: old saves stored "solves" as an int count.
+        # Convert to bool: any non-zero value means solved.
+        raw_solved = stats_data.get("solved", stats_data.get("solves", False))
+        solved_bool = bool(raw_solved)
         progress.puzzle_stats[pid] = PuzzleStats(
             puzzle_id=stats_data.get("puzzle_id", pid),
             attempts=stats_data.get("attempts", 0),
-            solves=stats_data.get("solves", 0),
+            solved=solved_bool,
             best_time_secs=stats_data.get("best_time_secs"),
             last_attempted=stats_data.get("last_attempted"),
         )
