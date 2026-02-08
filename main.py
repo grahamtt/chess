@@ -124,6 +124,9 @@ def main(page: ft.Page):
     puzzle_moves_made = 0  # Total moves made by the player in this attempt
     puzzle_progress: PuzzleProgress = load_puzzle_progress()
 
+    # --- Lichess TV state (declared early so closures can see it) ---
+    tv_watching = False  # True when streaming Lichess TV
+
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
         if elo_rating_text.current is not None:
@@ -1372,9 +1375,8 @@ def main(page: ft.Page):
     from puzzle_progress import UNLOCK_MARGIN
 
     # ------------------------------------------------------------------
-    # Lichess TV state
+    # Lichess TV state (tv_watching declared earlier with other state vars)
     # ------------------------------------------------------------------
-    tv_watching = False  # True when streaming Lichess TV
     tv_game: LichessTvGame | None = None  # Current TV game metadata
     tv_stop_requested = False  # Signal to stop the streaming background task
 
