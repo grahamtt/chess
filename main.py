@@ -1078,7 +1078,11 @@ def main(page: ft.Page):
         """Show a dialog with daily puzzle details and a Play button."""
         # Format metadata
         themes_str = format_themes(puzzle.themes) if puzzle.themes else "—"
-        solution_san = get_solution_san(puzzle)
+        try:
+            solution_san = get_solution_san(puzzle)
+        except Exception:
+            # Fallback: show raw UCI moves if SAN conversion fails
+            solution_san = list(puzzle.solution_uci)
         solution_str = " → ".join(solution_san) if solution_san else "—"
         turn_color = "Black" if " b " in puzzle.fen else "White"
 
@@ -1179,7 +1183,10 @@ def main(page: ft.Page):
             message.current.color = ft.Colors.BLUE
             page.update()
 
-        puzzle = fetch_daily_puzzle()
+        try:
+            puzzle = fetch_daily_puzzle()
+        except Exception:
+            puzzle = None
 
         if puzzle is None:
             if message.current is not None:
@@ -1191,7 +1198,11 @@ def main(page: ft.Page):
             return
 
         daily_puzzle_cache["latest"] = puzzle
-        _show_daily_puzzle_dialog(puzzle)
+        try:
+            _show_daily_puzzle_dialog(puzzle)
+        except Exception:
+            # Fallback: skip the dialog and load the puzzle directly
+            _load_daily_puzzle_fen(puzzle)
 
     # ------------------------------------------------------------------
     # Puzzles dialog (local + daily puzzle)

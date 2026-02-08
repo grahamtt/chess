@@ -142,6 +142,17 @@ class TestFormatSolutionSan:
         result = _format_solution_san(chess.STARTING_FEN, ["ZZZZ"])
         assert result == ["ZZZZ"]
 
+    def test_illegal_move_on_wrong_position_fallback(self):
+        """A legal-looking UCI move applied to the wrong position falls back to UCI."""
+        # h3g3 is not legal on the starting position (no piece on h3)
+        result = _format_solution_san(chess.STARTING_FEN, ["h3g3"])
+        assert result == ["h3g3"]
+
+    def test_invalid_fen_returns_uci_list(self):
+        """An invalid FEN should return the UCI list as-is."""
+        result = _format_solution_san("not a valid fen", ["e2e4", "e7e5"])
+        assert result == ["e2e4", "e7e5"]
+
     def test_sample_puzzle_solution(self):
         """Convert the sample puzzle solution to SAN."""
         board = _pgn_to_board(SAMPLE_API_RESPONSE["game"]["pgn"])

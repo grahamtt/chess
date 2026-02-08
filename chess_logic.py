@@ -32,7 +32,7 @@ class ChessGame:
         try:
             self._board.set_fen(fen)
             return True
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, AssertionError):
             return False
 
     def can_undo(self) -> bool:
@@ -84,7 +84,10 @@ class ChessGame:
             (m for m in candidates if getattr(m, "promotion", None) == chess.QUEEN),
             candidates[0],
         )
-        self._board.push(move)
+        try:
+            self._board.push(move)
+        except AssertionError:
+            return False
         return True
 
     def get_board(self) -> chess.Board:
@@ -95,7 +98,10 @@ class ChessGame:
         """Apply a move from a bot. Return True if applied."""
         if move not in self._board.legal_moves:
             return False
-        self._board.push(move)
+        try:
+            self._board.push(move)
+        except AssertionError:
+            return False
         return True
 
     def is_checkmate(self) -> bool:
@@ -215,7 +221,7 @@ class ChessGame:
                     return False
                 self._board.push(move)
             return True
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, AssertionError):
             self._board.reset()
             return False
 

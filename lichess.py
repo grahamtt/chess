@@ -68,7 +68,11 @@ def _format_solution_san(fen: str, solution_uci: list[str]) -> list[str]:
     Returns a list of SAN strings in the same order as *solution_uci*.
     If a move cannot be converted, its UCI string is kept as a fallback.
     """
-    board = chess.Board(fen)
+    try:
+        board = chess.Board(fen)
+    except (ValueError, TypeError):
+        # Invalid FEN — return UCI strings as-is
+        return list(solution_uci)
     sans: list[str] = []
     for uci in solution_uci:
         try:
@@ -76,7 +80,9 @@ def _format_solution_san(fen: str, solution_uci: list[str]) -> list[str]:
             san = board.san(move)
             sans.append(san)
             board.push(move)
-        except (ValueError, AssertionError):
+        except Exception:
+            # Catch *any* error from python-chess (AssertionError from push/san,
+            # ValueError, TypeError, etc.) and fall back to the UCI string.
             sans.append(uci)
     return sans
 

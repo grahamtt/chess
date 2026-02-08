@@ -342,3 +342,53 @@ def test_chess_game_get_position_evaluation_perspective():
     # The evaluation should be consistent regardless of whose turn it is
     assert isinstance(eval_white_turn, int)
     assert isinstance(eval_black_turn, int)
+
+
+# ---------------------------------------------------------------------------
+# AssertionError robustness (python-chess 1.11+ uses assert for push/san)
+# ---------------------------------------------------------------------------
+
+
+def test_make_move_handles_assertion_error(monkeypatch):
+    """make_move should return False if push() raises AssertionError."""
+    game = ChessGame()
+    # Replace push with one that always raises AssertionError
+    board = game.get_board()
+
+    def _bad_push(move):
+        raise AssertionError("push() assertion")
+
+    # Access the internal board and monkey-patch push
+    monkeypatch.setattr(game._board, "push", _bad_push)
+    # e2-e4 is a valid move but push will fail
+    assert not game.make_move(6, 4, 4, 4)
+
+
+def test_apply_move_handles_assertion_error(monkeypatch):
+    """apply_move should return False if push() raises AssertionError."""
+    game = ChessGame()
+    move = chess.Move.from_uci("e2e4")
+
+    def _bad_push(m):
+        raise AssertionError("push() assertion")
+
+    monkeypatch.setattr(game._board, "push", _bad_push)
+    assert not game.apply_move(move)
+
+
+def test_load_from_moves_handles_assertion_error(monkeypatch):
+    """load_from_moves should return False and reset if push() raises AssertionError."""
+    game = ChessGame()
+    call_count = [0]
+
+    original_push = game._board.push
+
+    def _bad_push(move):
+        call_count[0] += 1
+        raise AssertionError("push() assertion")
+
+    monkeypatch.setattr(game._board, "push", _bad_push)
+    result = game.load_from_moves(chess.STARTING_FEN, ["e2e4"])
+    assert result is False
+    # Board should have been reset to starting position
+    assert game.turn == "white"
