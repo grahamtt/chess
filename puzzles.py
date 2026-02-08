@@ -699,15 +699,20 @@ PUZZLE_DATABASE: list[Puzzle] = [
     Puzzle(
         id="defense_perpetual_check",
         name="Perpetual Check",
-        fen="6k1/5ppp/8/8/8/8/5PPP/2q3K1 w - - 0 1",
-        description="White is down material but can save the game with perpetual check.",
+        fen="7k/1r4p1/8/8/8/2q5/6PP/4Q1K1 w - - 0 1",
+        description="White is down a whole rook but can save the game with perpetual check!",
         category=PuzzleCategory.DEFENSE,
         difficulty_rating=1350,
-        objective=PuzzleObjective.FREE_PLAY,
-        solution_uci=[],
-        hints=["You can't win, but you might be able to draw with repeated checks."],
-        completion_message="",
-        failure_message="",
+        objective=PuzzleObjective.FIND_BEST_MOVES,
+        solution_uci=["e1e8", "h8h7", "e8h5", "h7g8", "h5e8"],
+        hints=[
+            "Give check on the back rank with your queen.",
+            "Keep checking! The queen can bounce between e8 and h5.",
+            "One more check completes the perpetual cycle.",
+        ],
+        completion_message="Perpetual check! The queen bounces between e8 and h5, "
+        "and the king can never escape. A draw snatched from the jaws of defeat!",
+        failure_message="Look for a queen check that starts a repeating cycle of checks.",
     ),
     Puzzle(
         id="defense_fortress",
