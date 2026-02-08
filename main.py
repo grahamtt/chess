@@ -186,6 +186,29 @@ def main(page: ft.Page):
     def is_bot_vs_bot() -> bool:
         return white_player != "human" and black_player != "human"
 
+    def get_board_flipped() -> bool:
+        """Determine if the board should be shown from black's perspective.
+
+        - Human vs Computer: permanently orient for the human player.
+        - Human vs Human: orient for the player whose turn it is.
+        - Bot vs Bot: always show from white's perspective.
+        """
+        white_is_human = white_player == "human"
+        black_is_human = black_player == "human"
+
+        if white_is_human and not black_is_human:
+            # Human plays white vs computer: never flip
+            return False
+        elif black_is_human and not white_is_human:
+            # Human plays black vs computer: always flip
+            return True
+        elif white_is_human and black_is_human:
+            # Human vs Human: flip when it's black's turn
+            return game.turn == "black"
+        else:
+            # Bot vs Bot: never flip
+            return False
+
     def save_current_state():
         """Persist the full game state to disk (called after every move)."""
         state = GameState(
@@ -462,9 +485,15 @@ def main(page: ft.Page):
     ):
         nonlocal square_size
         square_size = get_square_size(override_width, override_height)
+        flipped = get_board_flipped()
         grid.controls.clear()
-        for r in range(8):
-            row_controls = [build_square(r, c) for c in range(8)]
+        for visual_r in range(8):
+            row_controls = []
+            for visual_c in range(8):
+                # Map visual position to logical position
+                logical_r = 7 - visual_r if flipped else visual_r
+                logical_c = 7 - visual_c if flipped else visual_c
+                row_controls.append(build_square(logical_r, logical_c))
             grid.controls.append(ft.Row(controls=row_controls, spacing=0))
         page.update()
 
@@ -561,9 +590,14 @@ def main(page: ft.Page):
             message.current.color = ft.Colors.BLACK
 
     grid = ft.Column(spacing=0)
-    for r in range(8):
-        row_controls = [build_square(r, c) for c in range(8)]
-        grid.controls.append(ft.Row(controls=row_controls, spacing=0))
+    _init_flipped = get_board_flipped()
+    for _init_r in range(8):
+        _init_row = []
+        for _init_c in range(8):
+            _lr = 7 - _init_r if _init_flipped else _init_r
+            _lc = 7 - _init_c if _init_flipped else _init_c
+            _init_row.append(build_square(_lr, _lc))
+        grid.controls.append(ft.Row(controls=_init_row, spacing=0))
 
     status_bar = ft.Container(
         content=ft.Row(
@@ -900,6 +934,7 @@ def main(page: ft.Page):
         update_clock_display()
         update_evaluation_bar()
         save_current_state()
+        refresh_board()
         page.update()
         if game_over:
             return
