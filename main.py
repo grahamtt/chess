@@ -1113,9 +1113,7 @@ def main(page: ft.Page):
             clock_started = _saved.clock_started
             move_start_time = time.monotonic()
             game_over = (
-                game.is_checkmate()
-                or game.is_stalemate()
-                or game.is_only_kings_left()
+                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
             )
 
     update_status()
