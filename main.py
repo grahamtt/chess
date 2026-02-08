@@ -1498,7 +1498,8 @@ def main(page: ft.Page):
         )
 
         def play_puzzle(_):
-            page.pop_dialog()
+            page.pop_dialog()  # Close the Lichess puzzle detail dialog
+            page.pop_dialog()  # Close the main Puzzles & Scenarios dialog
             _load_daily_puzzle_fen(puzzle)
 
         dp_dialog = ft.AlertDialog(
