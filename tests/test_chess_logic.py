@@ -386,3 +386,77 @@ def test_load_from_moves_handles_assertion_error(monkeypatch):
     assert result is False
     # Board should have been reset to starting position
     assert game.turn == "white"
+
+
+# ---------------------------------------------------------------------------
+# get_last_move tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_last_move_no_moves():
+    """get_last_move returns None when no moves have been made."""
+    game = ChessGame()
+    assert game.get_last_move() is None
+
+
+def test_get_last_move_after_one_move():
+    """get_last_move returns correct squares after one move (e2-e4)."""
+    game = ChessGame()
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    result = game.get_last_move()
+    assert result is not None
+    from_sq, to_sq = result
+    # e2 = row 6, col 4; e4 = row 4, col 4
+    assert from_sq == (6, 4)
+    assert to_sq == (4, 4)
+
+
+def test_get_last_move_after_two_moves():
+    """get_last_move returns the second move, not the first."""
+    game = ChessGame()
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    game.make_move(1, 4, 3, 4)  # e7-e5
+    result = game.get_last_move()
+    assert result is not None
+    from_sq, to_sq = result
+    # e7 = row 1, col 4; e5 = row 3, col 4
+    assert from_sq == (1, 4)
+    assert to_sq == (3, 4)
+
+
+def test_get_last_move_after_undo():
+    """get_last_move reflects the undo: returns None if all undone, else previous move."""
+    game = ChessGame()
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    game.make_move(1, 4, 3, 4)  # e7-e5
+    game.undo()
+    # After undoing e7-e5, last move should be e2-e4
+    result = game.get_last_move()
+    assert result is not None
+    from_sq, to_sq = result
+    assert from_sq == (6, 4)
+    assert to_sq == (4, 4)
+
+    game.undo()
+    # After undoing all moves, should return None
+    assert game.get_last_move() is None
+
+
+def test_get_last_move_after_reset():
+    """get_last_move returns None after reset."""
+    game = ChessGame()
+    game.make_move(6, 4, 4, 4)  # e2-e4
+    game.reset()
+    assert game.get_last_move() is None
+
+
+def test_get_last_move_with_apply_move():
+    """get_last_move works correctly with apply_move (bot moves)."""
+    game = ChessGame()
+    move = chess.Move.from_uci("e2e4")
+    game.apply_move(move)
+    result = game.get_last_move()
+    assert result is not None
+    from_sq, to_sq = result
+    assert from_sq == (6, 4)
+    assert to_sq == (4, 4)
