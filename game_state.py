@@ -31,10 +31,10 @@ class GameState:
     black_player: str = "human"
 
     # Clock / time control
-    time_control_secs: int | None = 300  # None means unlimited
-    white_remaining_secs: float = 300.0
-    black_remaining_secs: float = 300.0
-    clock_enabled: bool = True
+    time_control_secs: int | None = None  # None means unlimited (default)
+    white_remaining_secs: float = 0.0
+    black_remaining_secs: float = 0.0
+    clock_enabled: bool = False
     clock_started: bool = False
 
 
