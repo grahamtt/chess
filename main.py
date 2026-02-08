@@ -9,6 +9,12 @@ import flet as ft
 from chess_logic import ChessGame
 from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
+from lichess import (
+    LichessDailyPuzzle,
+    fetch_daily_puzzle,
+    format_themes,
+    get_solution_san,
+)
 from puzzles import PUZZLES
 from bots import BotBot, ChessBot, MinimaxBot, SimpleBot
 from game_state import GameState, clear_game_state, load_game_state, save_game_state
@@ -1027,11 +1033,212 @@ def main(page: ft.Page):
         for i, (name, _fen, desc, _clock) in enumerate(PUZZLES)
     ]
 
+    # ------------------------------------------------------------------
+    # Lichess Daily Puzzle
+    # ------------------------------------------------------------------
+    daily_puzzle_cache: dict[str, LichessDailyPuzzle | None] = {}
+
+    def _load_daily_puzzle_fen(puzzle: LichessDailyPuzzle):
+        """Load a Lichess daily puzzle into the game board."""
+        if not game.set_fen(puzzle.fen):
+            return
+        nonlocal \
+            selected, \
+            valid_moves, \
+            hint_moves, \
+            game_over, \
+            clock_enabled, \
+            clock_started, \
+            elo_updated_this_game
+        selected = None
+        valid_moves = []
+        hint_moves = []
+        elo_updated_this_game = False
+        clock_enabled = False  # Puzzles have no clock
+        clock_started = False
+        game_over = (
+            game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
+        )
+        # Show puzzle info in the status bar
+        turn = game.turn.capitalize()
+        message.current.value = (
+            f"Lichess Daily Puzzle (Rating {puzzle.rating}) — {turn} to move."
+        )
+        message.current.color = ft.Colors.DEEP_PURPLE
+        update_clock_display()
+        save_current_state()
+        refresh_board()
+        update_undo_button()
+        update_history()
+        update_evaluation_bar()
+        update_opening_explorer()
+        page.update()
+
+    def _show_daily_puzzle_dialog(puzzle: LichessDailyPuzzle):
+        """Show a dialog with daily puzzle details and a Play button."""
+        # Format metadata
+        themes_str = format_themes(puzzle.themes) if puzzle.themes else "—"
+        try:
+            solution_san = get_solution_san(puzzle)
+        except Exception:
+            # Fallback: show raw UCI moves if SAN conversion fails
+            solution_san = list(puzzle.solution_uci)
+        solution_str = " → ".join(solution_san) if solution_san else "—"
+        turn_color = "Black" if " b " in puzzle.fen else "White"
+
+        # Build the solution reveal as a hidden-by-default element
+        solution_text = ft.Text(
+            solution_str,
+            size=13,
+            weight=ft.FontWeight.W_500,
+            color=ft.Colors.GREEN,
+            visible=False,
+        )
+
+        def toggle_solution(_):
+            solution_text.visible = not solution_text.visible
+            solution_text.update()
+
+        content = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text("Rating:", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            str(puzzle.rating),
+                            size=13,
+                            color=ft.Colors.DEEP_PURPLE,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        ft.Container(width=16),
+                        ft.Text("Plays:", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            f"{puzzle.plays:,}",
+                            size=13,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                    ],
+                    spacing=6,
+                ),
+                ft.Row(
+                    [
+                        ft.Text("To move:", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(turn_color, size=13, weight=ft.FontWeight.BOLD),
+                    ],
+                    spacing=6,
+                ),
+                ft.Row(
+                    [
+                        ft.Text("Themes:", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(
+                            themes_str,
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                            expand=True,
+                        ),
+                    ],
+                    spacing=6,
+                ),
+                ft.Divider(height=1),
+                ft.Row(
+                    [
+                        ft.Text("Solution:", size=13, weight=ft.FontWeight.W_500),
+                        ft.TextButton("Reveal", on_click=toggle_solution),
+                    ],
+                    spacing=6,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                solution_text,
+                ft.Divider(height=1),
+                ft.Text(
+                    f"From game: lichess.org/{puzzle.game_id}",
+                    size=11,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            ],
+            tight=True,
+            spacing=8,
+        )
+
+        def play_puzzle(_):
+            page.pop_dialog()
+            _load_daily_puzzle_fen(puzzle)
+
+        dp_dialog = ft.AlertDialog(
+            title=ft.Text("Lichess Daily Puzzle", weight=ft.FontWeight.W_600),
+            content=ft.Container(content=content, width=420),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: page.pop_dialog()),
+                ft.TextButton("Play", on_click=play_puzzle),
+            ],
+            open=False,
+        )
+        page.show_dialog(dp_dialog)
+
+    def do_fetch_daily_puzzle(_):
+        """Fetch and display the Lichess daily puzzle."""
+        # Show a brief loading indicator in the status bar
+        if message.current is not None:
+            message.current.value = "Fetching Lichess daily puzzle…"
+            message.current.color = ft.Colors.BLUE
+            page.update()
+
+        try:
+            puzzle = fetch_daily_puzzle()
+        except Exception:
+            puzzle = None
+
+        if puzzle is None:
+            if message.current is not None:
+                message.current.value = (
+                    "Could not fetch the daily puzzle. Check your internet connection."
+                )
+                message.current.color = ft.Colors.RED
+                page.update()
+            return
+
+        daily_puzzle_cache["latest"] = puzzle
+        try:
+            _show_daily_puzzle_dialog(puzzle)
+        except Exception:
+            # Fallback: skip the dialog and load the puzzle directly
+            _load_daily_puzzle_fen(puzzle)
+
+    # ------------------------------------------------------------------
+    # Puzzles dialog (local + daily puzzle)
+    # ------------------------------------------------------------------
+
     puzzles_dialog = ft.AlertDialog(
         title=ft.Text("Puzzles & Scenarios"),
         content=ft.Container(
             content=ft.Column(
-                puzzle_list_controls,
+                [
+                    # Daily puzzle button at the top
+                    ft.Container(
+                        content=ft.ListTile(
+                            leading=ft.Icon(
+                                ft.Icons.PUBLIC, color=ft.Colors.DEEP_PURPLE
+                            ),
+                            title=ft.Text(
+                                "Lichess Daily Puzzle",
+                                size=14,
+                                weight=ft.FontWeight.W_600,
+                                color=ft.Colors.DEEP_PURPLE,
+                            ),
+                            subtitle=ft.Text(
+                                "Fetch today's puzzle from lichess.org",
+                                size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                            on_click=do_fetch_daily_puzzle,
+                        ),
+                        bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                        border_radius=8,
+                    ),
+                    ft.Divider(height=1),
+                    # Existing local puzzles
+                    *puzzle_list_controls,
+                ],
                 scroll=ft.ScrollMode.AUTO,
                 tight=True,
                 spacing=0,
