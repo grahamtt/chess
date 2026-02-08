@@ -74,6 +74,11 @@ def main(page: ft.Page):
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
 
+    # Refs for side-panel sections (toggled visible/hidden during puzzles)
+    elo_section_ref = ft.Ref[ft.Column]()
+    eval_section_ref = ft.Ref[ft.Column]()
+    opening_section_ref = ft.Ref[ft.Column]()
+
     # Game clock: each player has fixed time; runs down on their turn
     time_control_secs = 300  # 5 min default; set by dropdown for next game
     white_remaining_secs = float(time_control_secs)
@@ -166,12 +171,17 @@ def main(page: ft.Page):
     def handle_game_over_elo(result_for_white: float | None):
         """Update ELO after a game ends (human vs bot only).
 
+        Puzzles never affect the player's ELO rating.
+
         Args:
             result_for_white: 1.0 if white won, 0.0 if black won, 0.5 if draw,
                             None if not applicable (bot vs bot or human vs human).
         """
         nonlocal elo_updated_this_game
         if elo_updated_this_game or result_for_white is None:
+            return
+        # Puzzles never affect ELO
+        if active_puzzle is not None:
             return
 
         # Determine which side the human is playing and which bot they face
@@ -852,6 +862,7 @@ def main(page: ft.Page):
         update_evaluation_bar()
         update_opening_explorer()
         update_elo_display()
+        update_side_panel_visibility()
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
@@ -890,6 +901,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_side_panel_visibility()
         page.update()
 
     def update_history():
@@ -1058,6 +1070,21 @@ def main(page: ft.Page):
         if undo_btn.current.page is not None:
             undo_btn.current.update()
             page.update(undo_btn.current)
+
+    def update_side_panel_visibility():
+        """Show or hide side-panel sections based on whether a puzzle is active.
+
+        During puzzles, ELO rating, evaluation bar, and opening explorer are
+        hidden because they are irrelevant to the puzzle-solving experience.
+        """
+        in_puzzle = active_puzzle is not None
+        for ref in (elo_section_ref, eval_section_ref, opening_section_ref):
+            if ref.current is not None:
+                ref.current.visible = not in_puzzle
+                try:
+                    ref.current.update()
+                except RuntimeError:
+                    pass
 
     player_options = [
         ft.DropdownOption(key="human", text="Human"),
@@ -1247,6 +1274,7 @@ def main(page: ft.Page):
         update_history()
         update_evaluation_bar()
         update_opening_explorer()
+        update_side_panel_visibility()
         page.update()
 
     def _difficulty_color(rating: int) -> str:
@@ -1857,129 +1885,158 @@ def main(page: ft.Page):
     history_panel = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Rating", size=16, weight=ft.FontWeight.W_600),
-                ft.Row(
-                    [
-                        ft.Text(
-                            ref=elo_rating_text,
-                            value=str(elo_profile.rating),
-                            size=22,
-                            weight=ft.FontWeight.BOLD,
-                            color=ft.Colors.DEEP_PURPLE,
-                        ),
-                        ft.Text(
-                            ref=elo_label_text,
-                            value=get_difficulty_label(elo_profile.rating),
-                            size=12,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                    ],
-                    spacing=8,
-                    vertical_alignment=ft.CrossAxisAlignment.END,
-                ),
+                # --- ELO Rating section (hidden during puzzles) ---
                 ft.Column(
-                    [
+                    ref=elo_section_ref,
+                    controls=[
+                        ft.Text("Rating", size=16, weight=ft.FontWeight.W_600),
                         ft.Row(
                             [
                                 ft.Text(
-                                    ref=elo_record_text,
-                                    value=f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L",
-                                    size=11,
-                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                    ref=elo_rating_text,
+                                    value=str(elo_profile.rating),
+                                    size=22,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.DEEP_PURPLE,
                                 ),
                                 ft.Text(
-                                    ref=elo_peak_text,
-                                    value=f"Peak: {elo_profile.peak_rating}",
-                                    size=11,
+                                    ref=elo_label_text,
+                                    value=get_difficulty_label(elo_profile.rating),
+                                    size=12,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                 ),
                             ],
                             spacing=8,
-                        ),
-                        ft.Row(
-                            [
-                                ft.Text(
-                                    "Form:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
-                                ),
-                                ft.Text(
-                                    ref=elo_form_text,
-                                    value=get_recent_form(elo_profile),
-                                    size=11,
-                                    weight=ft.FontWeight.W_500,
-                                    color=ft.Colors.ON_SURFACE_VARIANT,
-                                ),
-                            ],
-                            spacing=4,
-                        ),
-                        ft.Row(
-                            [
-                                ft.Text(
-                                    "Try:", size=11, color=ft.Colors.ON_SURFACE_VARIANT
-                                ),
-                                ft.Text(
-                                    ref=elo_recommendation_text,
-                                    value="",
-                                    size=11,
-                                    weight=ft.FontWeight.W_500,
-                                    color=ft.Colors.DEEP_PURPLE,
-                                ),
-                            ],
-                            spacing=4,
-                        ),
-                    ],
-                    spacing=2,
-                    tight=True,
-                ),
-                ft.Divider(height=1),
-                ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
-                ft.Column(
-                    [
-                        eval_bar,
-                        ft.Text(
-                            ref=eval_text,
-                            value="+0.00",
-                            size=14,
-                            weight=ft.FontWeight.W_500,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    ],
-                    spacing=4,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                ft.Divider(height=1),
-                ft.Text("Opening", size=16, weight=ft.FontWeight.W_600),
-                ft.Column(
-                    [
-                        ft.Text(
-                            ref=opening_name_text,
-                            value="No opening identified",
-                            size=14,
-                            weight=ft.FontWeight.NORMAL,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                        ft.Text(
-                            ref=opening_desc_text,
-                            value="",
-                            size=12,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
-                        ft.Text(
-                            "Common moves:",
-                            size=12,
-                            weight=ft.FontWeight.W_500,
-                            color=ft.Colors.ON_SURFACE_VARIANT,
+                            vertical_alignment=ft.CrossAxisAlignment.END,
                         ),
                         ft.Column(
-                            ref=common_moves_column,
-                            controls=[],
+                            [
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            ref=elo_record_text,
+                                            value=f"{elo_profile.wins}W / {elo_profile.draws}D / {elo_profile.losses}L",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_peak_text,
+                                            value=f"Peak: {elo_profile.peak_rating}",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                    ],
+                                    spacing=8,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            "Form:",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_form_text,
+                                            value=get_recent_form(elo_profile),
+                                            size=11,
+                                            weight=ft.FontWeight.W_500,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                    ],
+                                    spacing=4,
+                                ),
+                                ft.Row(
+                                    [
+                                        ft.Text(
+                                            "Try:",
+                                            size=11,
+                                            color=ft.Colors.ON_SURFACE_VARIANT,
+                                        ),
+                                        ft.Text(
+                                            ref=elo_recommendation_text,
+                                            value="",
+                                            size=11,
+                                            weight=ft.FontWeight.W_500,
+                                            color=ft.Colors.DEEP_PURPLE,
+                                        ),
+                                    ],
+                                    spacing=4,
+                                ),
+                            ],
                             spacing=2,
                             tight=True,
                         ),
+                        ft.Divider(height=1),
                     ],
-                    spacing=4,
+                    spacing=8,
                     tight=True,
                 ),
-                ft.Divider(height=1),
+                # --- Evaluation section (hidden during puzzles) ---
+                ft.Column(
+                    ref=eval_section_ref,
+                    controls=[
+                        ft.Text("Evaluation", size=16, weight=ft.FontWeight.W_600),
+                        ft.Column(
+                            [
+                                eval_bar,
+                                ft.Text(
+                                    ref=eval_text,
+                                    value="+0.00",
+                                    size=14,
+                                    weight=ft.FontWeight.W_500,
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
+                            ],
+                            spacing=4,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        ft.Divider(height=1),
+                    ],
+                    spacing=8,
+                    tight=True,
+                ),
+                # --- Opening section (hidden during puzzles) ---
+                ft.Column(
+                    ref=opening_section_ref,
+                    controls=[
+                        ft.Text("Opening", size=16, weight=ft.FontWeight.W_600),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    ref=opening_name_text,
+                                    value="No opening identified",
+                                    size=14,
+                                    weight=ft.FontWeight.NORMAL,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Text(
+                                    ref=opening_desc_text,
+                                    value="",
+                                    size=12,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Text(
+                                    "Common moves:",
+                                    size=12,
+                                    weight=ft.FontWeight.W_500,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                                ft.Column(
+                                    ref=common_moves_column,
+                                    controls=[],
+                                    spacing=2,
+                                    tight=True,
+                                ),
+                            ],
+                            spacing=4,
+                            tight=True,
+                        ),
+                        ft.Divider(height=1),
+                    ],
+                    spacing=8,
+                    tight=True,
+                ),
+                # --- Moves section (always visible) ---
                 ft.Text("Moves", size=16, weight=ft.FontWeight.W_600),
                 ft.Column(
                     controls=[
