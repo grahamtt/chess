@@ -147,8 +147,8 @@ class TestGameState:
         assert gs.moves_uci == []
         assert gs.white_player == "human"
         assert gs.black_player == "human"
-        assert gs.time_control_secs == 300
-        assert gs.clock_enabled is True
+        assert gs.time_control_secs is None
+        assert gs.clock_enabled is False
         assert gs.clock_started is False
 
     def test_custom_values(self):

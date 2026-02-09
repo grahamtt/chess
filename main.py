@@ -94,11 +94,11 @@ def main(page: ft.Page):
     opening_section_ref = ft.Ref[ft.Column]()
 
     # Game clock: each player has fixed time; runs down on their turn
-    time_control_secs = 300  # 5 min default; set by dropdown for next game
-    white_remaining_secs = float(time_control_secs)
-    black_remaining_secs = float(time_control_secs)
+    time_control_secs = None  # Unlimited by default; set by dropdown for next game
+    white_remaining_secs = 0.0
+    black_remaining_secs = 0.0
     move_start_time = time.monotonic()
-    clock_enabled = True  # False when playing puzzles (no time pressure)
+    clock_enabled = False  # False when unlimited or playing puzzles (no time pressure)
     clock_started = (
         False  # True only after white's first move (clock does not run until then)
     )
@@ -833,7 +833,9 @@ def main(page: ft.Page):
                         ft.Text("White ", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text(
                             ref=white_clock_text,
-                            value=format_clock(time_control_secs),
+                            value="—"
+                            if time_control_secs is None
+                            else format_clock(time_control_secs),
                             size=14,
                             weight=ft.FontWeight.BOLD,
                         ),
@@ -842,7 +844,9 @@ def main(page: ft.Page):
                         ),
                         ft.Text(
                             ref=black_clock_text,
-                            value=format_clock(time_control_secs),
+                            value="—"
+                            if time_control_secs is None
+                            else format_clock(time_control_secs),
                             size=14,
                         ),
                     ],
