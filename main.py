@@ -144,6 +144,8 @@ def main(page: ft.Page):
 
     # --- Lichess TV state (declared early so closures can see it) ---
     tv_watching = False  # True when streaming Lichess TV
+    tv_white_clock_secs: int = 0  # White remaining seconds from Lichess TV feed
+    tv_black_clock_secs: int = 0  # Black remaining seconds from Lichess TV feed
 
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
@@ -299,7 +301,28 @@ def main(page: ft.Page):
         return f"{m}:{s:02d}"
 
     def update_clock_display():
-        """Refresh both players' clock display (remaining time, active = running). When clock disabled, show 'Clock off'. Before white's first move, show full time and do not count down."""
+        """Refresh both players' clock display (remaining time, active = running). When clock disabled, show 'Clock off'. Before white's first move, show full time and do not count down. In Lichess TV mode, show the server-reported clock values."""
+        # --- Lichess TV mode: show server-reported clocks ---
+        if tv_watching:
+            if white_clock_text.current is not None:
+                white_clock_text.current.value = format_clock(tv_white_clock_secs)
+                white_clock_text.current.weight = (
+                    ft.FontWeight.BOLD if game.turn == "white" else ft.FontWeight.NORMAL
+                )
+                try:
+                    white_clock_text.current.update()
+                except RuntimeError:
+                    pass
+            if black_clock_text.current is not None:
+                black_clock_text.current.value = format_clock(tv_black_clock_secs)
+                black_clock_text.current.weight = (
+                    ft.FontWeight.BOLD if game.turn == "black" else ft.FontWeight.NORMAL
+                )
+                try:
+                    black_clock_text.current.update()
+                except RuntimeError:
+                    pass
+            return
         if not clock_enabled:
             if white_clock_text.current is not None:
                 white_clock_text.current.value = "—"
@@ -1498,14 +1521,17 @@ def main(page: ft.Page):
     def _stop_tv_stream():
         """Stop the Lichess TV stream if running."""
         nonlocal tv_watching, tv_stop_requested, tv_game, tv_channel
+        nonlocal tv_white_clock_secs, tv_black_clock_secs
         tv_stop_requested = True
         tv_watching = False
         tv_game = None
         tv_channel = None
+        tv_white_clock_secs = 0
+        tv_black_clock_secs = 0
 
     def _update_tv_board(fen: str, last_move_uci: str, wc: int, bc: int):
         """Apply a TV position update to the board display."""
-        nonlocal game_over
+        nonlocal game_over, tv_white_clock_secs, tv_black_clock_secs
         if not tv_watching:
             return
         if not game.set_fen(fen):
@@ -1513,11 +1539,10 @@ def main(page: ft.Page):
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
-        # Build status message with clock info
-        wm = wc // 60
-        ws = wc % 60
-        bm = bc // 60
-        bs = bc % 60
+        # Update TV clock state from the server-reported values
+        tv_white_clock_secs = wc
+        tv_black_clock_secs = bc
+        # Build status message (clocks are shown in the dedicated clock widgets)
         if tv_game:
             wp = tv_game.white_player
             bp = tv_game.black_player
@@ -1530,10 +1555,11 @@ def main(page: ft.Page):
             w_rating = b_rating = ""
         lm_str = f"  Last: {last_move_uci}" if last_move_uci else ""
         message.current.value = (
-            f"Lichess TV — {w_name}{w_rating} {wm}:{ws:02d}"
-            f" vs {b_name}{b_rating} {bm}:{bs:02d}{lm_str}"
+            f"Lichess TV — {w_name}{w_rating}"
+            f" vs {b_name}{b_rating}{lm_str}"
         )
         message.current.color = ft.Colors.TEAL
+        update_clock_display()
         refresh_board()
         page.update()
 
@@ -1542,6 +1568,7 @@ def main(page: ft.Page):
         nonlocal tv_game, game_over, selected, valid_moves, hint_moves
         nonlocal clock_enabled, clock_started, active_puzzle, elo_updated_this_game
         nonlocal puzzle_move_index, puzzle_start_time, puzzle_moves_made
+        nonlocal tv_white_clock_secs, tv_black_clock_secs
         tv_game = game_meta
         if not game.set_fen(game_meta.fen):
             return
@@ -1555,6 +1582,11 @@ def main(page: ft.Page):
         puzzle_moves_made = 0
         clock_enabled = False
         clock_started = False
+        # Initialize TV clocks from player initial seconds
+        wp = game_meta.white_player
+        bp = game_meta.black_player
+        tv_white_clock_secs = wp.seconds if wp else 0
+        tv_black_clock_secs = bp.seconds if bp else 0
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
