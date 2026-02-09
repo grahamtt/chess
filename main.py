@@ -1714,7 +1714,7 @@ def main(page: ft.Page):
                     value=game_mode,
                     width=200,
                     options=game_mode_options,
-                    on_change=_on_game_mode_change,
+                    on_select=_on_game_mode_change,
                 ),
                 ft.Text("Time control", size=14, weight=ft.FontWeight.W_500),
                 ft.Dropdown(
