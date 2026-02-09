@@ -18,6 +18,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "--cov=. --cov-report xml"
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
@@ -38,7 +39,7 @@ branch = true
 precision = 2
 show_missing = true
 skip_covered = false
-fail_under = 80
+fail_under = 92
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -49,6 +50,3 @@ exclude_lines = [
     "@abstractmethod",
     "\\.\\.\\.",  # Protocol placeholder
 ]
-
-[tool.coverage.branch]
-fail_under = 80
