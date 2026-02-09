@@ -359,3 +359,60 @@ class TestIntegration:
         assert game2.turn == "white"  # White's turn after forced capture
         # White should be forced to capture d5
         assert game2.has_captures()
+
+    def test_game_mode_chess960_roundtrip(self, tmp_path):
+        """Chess960 game mode is saved and restored correctly."""
+        path = tmp_path / "save.json"
+        state = GameState(
+            game_mode="chess960",
+            chess960_position=42,
+            white_player="human",
+            black_player="human",
+        )
+        save_game_state(state, path)
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.game_mode == "chess960"
+        assert loaded.chess960_position == 42
+
+    def test_game_mode_chess960_with_moves(self, tmp_path):
+        """Chess960 game with moves persists correctly."""
+        from chess_logic import Chess960Game
+
+        path = tmp_path / "save.json"
+        game = Chess960Game(position=518)
+        game.make_move(6, 4, 4, 4)  # e2e4
+        game.make_move(1, 4, 3, 4)  # e7e5
+
+        state = GameState(
+            initial_fen=game.get_initial_fen(),
+            moves_uci=game.get_moves_uci(),
+            game_mode="chess960",
+            chess960_position=game.chess960_position,
+        )
+        save_game_state(state, path)
+
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.game_mode == "chess960"
+        assert loaded.chess960_position == 518
+
+        # Restore into a fresh chess960 game
+        game2 = Chess960Game(position=loaded.chess960_position)
+        assert game2.load_from_moves(loaded.initial_fen, loaded.moves_uci)
+        assert game2.turn == game.turn
+
+    def test_chess960_position_default_none(self):
+        """GameState defaults chess960_position to None."""
+        state = GameState()
+        assert state.chess960_position is None
+
+    def test_chess960_position_ignored_for_standard(self, tmp_path):
+        """chess960_position is saved but irrelevant for standard mode."""
+        path = tmp_path / "save.json"
+        state = GameState(game_mode="standard", chess960_position=None)
+        save_game_state(state, path)
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.game_mode == "standard"
+        assert loaded.chess960_position is None

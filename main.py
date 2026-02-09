@@ -7,7 +7,7 @@ import time
 
 import chess
 import flet as ft
-from chess_logic import AntiChessGame, ChessGame
+from chess_logic import AntiChessGame, Chess960Game, ChessGame
 from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from lichess import (
@@ -74,7 +74,7 @@ def main(page: ft.Page):
     page.window.min_height = 560
 
     game = ChessGame()
-    game_mode = "standard"  # "standard" or "antichess"
+    game_mode = "standard"  # "standard", "antichess", or "chess960"
     selected = None  # (row, col) or None
     valid_moves = []  # list of (row, col)
     hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
@@ -156,6 +156,8 @@ def main(page: ft.Page):
         if app_bar_title_ref.current is not None:
             if game_mode == "antichess":
                 app_bar_title_ref.current.value = "Antichess"
+            elif game_mode == "chess960":
+                app_bar_title_ref.current.value = "Chess960"
             else:
                 app_bar_title_ref.current.value = "Chess"
             try:
@@ -296,12 +298,16 @@ def main(page: ft.Page):
 
     def save_current_state():
         """Persist the full game state to disk (called after every move)."""
+        chess960_pos = None
+        if game_mode == "chess960" and isinstance(game, Chess960Game):
+            chess960_pos = game.chess960_position
         state = GameState(
             initial_fen=game.get_initial_fen(),
             moves_uci=game.get_moves_uci(),
             white_player=white_player,
             black_player=black_player,
             game_mode=game_mode,
+            chess960_position=chess960_pos,
             time_control_secs=time_control_secs,
             white_remaining_secs=white_remaining_secs,
             black_remaining_secs=black_remaining_secs,
@@ -1260,7 +1266,12 @@ def main(page: ft.Page):
         # Ensure the correct game object is used for the current mode
         if game_mode == "antichess" and not isinstance(game, AntiChessGame):
             game = AntiChessGame()
-        elif game_mode != "antichess" and isinstance(game, AntiChessGame):
+        elif game_mode == "chess960":
+            # Always create a new Chess960Game for a fresh random position
+            game = Chess960Game()
+        elif game_mode != "antichess" and isinstance(
+            game, (AntiChessGame, Chess960Game)
+        ):
             game = ChessGame()
         else:
             game.reset()
@@ -1285,6 +1296,10 @@ def main(page: ft.Page):
         move_start_time = time.monotonic()
         if game_mode == "antichess":
             message.current.value = "Antichess — White to move. Lose all your pieces!"
+        elif game_mode == "chess960" and isinstance(game, Chess960Game):
+            message.current.value = (
+                f"Chess960 (Position #{game.chess960_position}) — White to move."
+            )
         else:
             message.current.value = "White to move."
         message.current.color = ft.Colors.BLACK
@@ -1562,7 +1577,7 @@ def main(page: ft.Page):
                 except RuntimeError:
                     pass
 
-    player_options = [
+    _base_player_options = [
         ft.DropdownOption(key="human", text="Human"),
         ft.DropdownOption(key="random", text="Random"),
         ft.DropdownOption(key="botbot", text="BotBot"),
@@ -1571,19 +1586,44 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_3", text="Minimax 3"),
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
     ]
+    _stockfish_player_options = []
     if _stockfish_available:
-        player_options.extend(
-            [
-                ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
-                ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
-                ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
-                ft.DropdownOption(key="stockfish_4", text="Stockfish 4 (~1800)"),
-                ft.DropdownOption(key="stockfish_5", text="Stockfish 5 (~2000)"),
-                ft.DropdownOption(key="stockfish_6", text="Stockfish 6 (~2200)"),
-                ft.DropdownOption(key="stockfish_7", text="Stockfish 7 (~2500)"),
-                ft.DropdownOption(key="stockfish_8", text="Stockfish 8 (Max)"),
-            ]
-        )
+        _stockfish_player_options = [
+            ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
+            ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
+            ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
+            ft.DropdownOption(key="stockfish_4", text="Stockfish 4 (~1800)"),
+            ft.DropdownOption(key="stockfish_5", text="Stockfish 5 (~2000)"),
+            ft.DropdownOption(key="stockfish_6", text="Stockfish 6 (~2200)"),
+            ft.DropdownOption(key="stockfish_7", text="Stockfish 7 (~2500)"),
+            ft.DropdownOption(key="stockfish_8", text="Stockfish 8 (Max)"),
+        ]
+    player_options = _base_player_options + _stockfish_player_options
+
+    def _get_player_options_for_mode(mode: str) -> list:
+        """Return the player dropdown options appropriate for the given game mode."""
+        if StockfishBot.is_mode_supported(mode):
+            return _base_player_options + _stockfish_player_options
+        return list(_base_player_options)
+
+    def _on_game_mode_change(e):
+        """Update player dropdowns when game mode changes in the config dialog."""
+        selected_mode = e.control.value or "standard"
+        new_options = _get_player_options_for_mode(selected_mode)
+        # Update white and black player dropdowns with the appropriate options
+        for ref in (config_white_ref, config_black_ref):
+            if ref.current is not None:
+                current_val = ref.current.value or "human"
+                ref.current.options = new_options
+                # Reset to "human" if the current selection is no longer available
+                valid_keys = {opt.key for opt in new_options}
+                if current_val not in valid_keys:
+                    ref.current.value = "human"
+                try:
+                    ref.current.update()
+                except RuntimeError:
+                    pass
+
     time_options = [
         ft.DropdownOption(key="unlimited", text="Unlimited"),
         ft.DropdownOption(key="60", text="1 min"),
@@ -1599,6 +1639,7 @@ def main(page: ft.Page):
 
     game_mode_options = [
         ft.DropdownOption(key="standard", text="Standard"),
+        ft.DropdownOption(key="chess960", text="Chess960 (Fischer Random)"),
         ft.DropdownOption(key="antichess", text="Antichess (Losing Chess)"),
     ]
 
@@ -1631,14 +1672,36 @@ def main(page: ft.Page):
             game_mode = new_mode
             if game_mode == "antichess":
                 game = AntiChessGame()
+            elif game_mode == "chess960":
+                game = Chess960Game()
+                # Configure Stockfish bots for Chess960
+                for bot in player_bots.values():
+                    if isinstance(bot, StockfishBot):
+                        bot.set_chess960(True)
             else:
                 game = ChessGame()
+            # When leaving chess960, disable Chess960 mode on Stockfish bots
+            if new_mode != "chess960":
+                for bot in player_bots.values():
+                    if isinstance(bot, StockfishBot):
+                        bot.set_chess960(False)
             selected = None
             valid_moves = []
             hint_moves = []
             game_over = False
             elo_updated_this_game = False
             clear_game_state()
+
+        # Disable Stockfish bots for unsupported game modes
+        if not StockfishBot.is_mode_supported(game_mode):
+            if config_white_ref.current is not None:
+                val = config_white_ref.current.value or "human"
+                if val.startswith("stockfish_"):
+                    config_white_ref.current.value = "human"
+            if config_black_ref.current is not None:
+                val = config_black_ref.current.value or "human"
+                if val.startswith("stockfish_"):
+                    config_black_ref.current.value = "human"
 
         if config_time_ref.current is not None:
             raw = config_time_ref.current.value or "300"
@@ -1684,6 +1747,7 @@ def main(page: ft.Page):
                     value=game_mode,
                     width=200,
                     options=game_mode_options,
+                    on_select=_on_game_mode_change,
                 ),
                 ft.Text("Time control", size=14, weight=ft.FontWeight.W_500),
                 ft.Dropdown(
@@ -1730,10 +1794,14 @@ def main(page: ft.Page):
                 "unlimited" if time_control_secs is None else str(time_control_secs)
             )
             config_time_ref.current.update()
+        # Update player options based on current game mode
+        current_options = _get_player_options_for_mode(game_mode)
         if config_white_ref.current is not None:
+            config_white_ref.current.options = current_options
             config_white_ref.current.value = white_player
             config_white_ref.current.update()
         if config_black_ref.current is not None:
+            config_black_ref.current.options = current_options
             config_black_ref.current.value = black_player
             config_black_ref.current.update()
         page.update()
@@ -2992,7 +3060,9 @@ def main(page: ft.Page):
     app_bar = ft.AppBar(
         title=ft.Text(
             ref=app_bar_title_ref,
-            value="Chess" if game_mode == "standard" else "Antichess",
+            value="Chess960"
+            if game_mode == "chess960"
+            else ("Antichess" if game_mode == "antichess" else "Chess"),
             weight=ft.FontWeight.BOLD,
         ),
         center_title=True,
@@ -3045,6 +3115,13 @@ def main(page: ft.Page):
         if _saved.game_mode == "antichess":
             game_mode = "antichess"
             game = AntiChessGame()
+        elif _saved.game_mode == "chess960":
+            game_mode = "chess960"
+            game = Chess960Game(position=_saved.chess960_position)
+            # Configure Stockfish bots for Chess960
+            for _bot in player_bots.values():
+                if isinstance(_bot, StockfishBot):
+                    _bot.set_chess960(True)
         else:
             game_mode = "standard"
             game = ChessGame()

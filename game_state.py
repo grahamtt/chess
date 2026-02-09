@@ -30,8 +30,11 @@ class GameState:
     white_player: str = "human"
     black_player: str = "human"
 
-    # Game mode: "standard" or "antichess"
+    # Game mode: "standard", "antichess", or "chess960"
     game_mode: str = "standard"
+
+    # Chess960 starting position number (0–959); only relevant when game_mode == "chess960"
+    chess960_position: int | None = None
 
     # Clock / time control
     time_control_secs: int | None = None  # None means unlimited (default)
