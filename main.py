@@ -76,6 +76,9 @@ def main(page: ft.Page):
     selected = None  # (row, col) or None
     valid_moves = []  # list of (row, col)
     hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
+    animating_move = (
+        None  # (from_row, from_col, to_row, to_col) during move animation, else None
+    )
     game_over = False
     message = ft.Ref[ft.Text]()
     history_text = ft.Ref[ft.Text]()
@@ -461,7 +464,7 @@ def main(page: ft.Page):
         is_light = (row + col) % 2 == 0
         return LIGHT_SQUARE if is_light else DARK_SQUARE
 
-    def build_square(row: int, col: int) -> ft.Container:
+    def build_square(row: int, col: int) -> ft.DragTarget:
         cell = game.piece_at(row, col)
         bg = square_color(row, col)
 
@@ -492,18 +495,59 @@ def main(page: ft.Page):
             bg = LAST_MOVE
 
         content_list = []
-        if cell is not None:
+
+        # Hide piece at destination during move animation (it's shown in the overlay)
+        show_piece = cell is not None
+        if animating_move and (row, col) == (animating_move[2], animating_move[3]):
+            show_piece = False
+
+        if show_piece:
             color, piece = cell
             svg = get_svg(color, piece)
             pad = max(4, square_size // 8)
-            content_list.append(
-                ft.Image(
+            piece_img = ft.Image(
+                src=svg,
+                width=square_size - pad,
+                height=square_size - pad,
+                fit=ft.BoxFit.CONTAIN,
+            )
+
+            # Make piece draggable if it belongs to the current player and it's their turn
+            can_drag = (
+                not game_over
+                and is_human_turn()
+                and cell[0] == game.turn
+                and animating_move is None
+            )
+            if can_drag:
+                ghost_img = ft.Image(
                     src=svg,
                     width=square_size - pad,
                     height=square_size - pad,
                     fit=ft.BoxFit.CONTAIN,
+                    opacity=0.3,
                 )
-            )
+                feedback_img = ft.Container(
+                    content=ft.Image(
+                        src=svg,
+                        width=square_size,
+                        height=square_size,
+                        fit=ft.BoxFit.CONTAIN,
+                    ),
+                    width=square_size * 1.05,
+                    height=square_size * 1.05,
+                    alignment=ft.Alignment(0, 0),
+                )
+                draggable = ft.Draggable(
+                    group="chess",
+                    content=piece_img,
+                    content_when_dragging=ghost_img,
+                    content_feedback=feedback_img,
+                    data=f"{row},{col}",
+                )
+                content_list.append(draggable)
+            else:
+                content_list.append(piece_img)
 
         square_content = ft.Stack(
             controls=content_list,
@@ -512,86 +556,23 @@ def main(page: ft.Page):
             alignment=ft.Alignment(0, 0),
         )
 
+        square_container = ft.Container(
+            content=square_content,
+            width=square_size,
+            height=square_size,
+            bgcolor=bg,
+            border=ft.border.all(0, "transparent"),
+        )
+
         def on_tap(e):
-            nonlocal selected, valid_moves, hint_moves, game_over
-            nonlocal active_puzzle, puzzle_move_index, puzzle_moves_made
-            if game_over:
+            nonlocal selected, valid_moves
+            if game_over or animating_move is not None:
                 return
             if not is_human_turn():
                 refresh_board()
                 return
             if selected is not None and (row, col) in valid_moves:
-                # Determine the UCI move the player is making
-                import chess as _chess
-
-                from_sq = _chess.square(selected[1], 7 - selected[0])
-                to_sq = _chess.square(col, 7 - row)
-                # Check for promotion
-                board = game.get_board()
-                piece = board.piece_at(from_sq)
-                is_promo = (
-                    piece is not None
-                    and piece.piece_type == _chess.PAWN
-                    and (
-                        _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
-                    )
-                )
-                uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
-                if is_promo:
-                    uci_move += "q"  # Default queen promotion for puzzle checks
-
-                # --- Puzzle validation ---
-                if (
-                    active_puzzle
-                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
-                ):
-                    puzzle_moves_made += 1
-                    if not active_puzzle.is_player_move_correct(
-                        puzzle_move_index, uci_move
-                    ):
-                        # Wrong move — puzzle failed
-                        handle_puzzle_failure()
-                        selected = None
-                        valid_moves = []
-                        hint_moves = []
-                        refresh_board()
-                        page.update()
-                        return
-
-                game.make_move(selected[0], selected[1], row, col)
-                selected = None
-                valid_moves = []
-                hint_moves = []  # Clear hints after making a move
-                deduct_move_time_and_check_game_over()
-                update_status()
-                update_undo_button()
-                update_history()
-                update_evaluation_bar()
-                update_opening_explorer()
-                save_current_state()
-                refresh_board()
-                page.update()
-
-                # --- Puzzle completion check ---
-                if (
-                    active_puzzle
-                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
-                ):
-                    if active_puzzle.is_complete_after_player_move(puzzle_move_index):
-                        handle_puzzle_completion()
-                        page.update()
-                        return
-                    # Play opponent's automatic response
-                    opponent_uci = active_puzzle.get_opponent_response(
-                        puzzle_move_index
-                    )
-                    puzzle_move_index += 1
-                    if opponent_uci:
-                        page.run_task(play_puzzle_opponent_move, opponent_uci)
-                        return
-
-                if not game_over and not is_human_turn():
-                    page.run_task(bot_move_after_human)
+                execute_human_move(selected[0], selected[1], row, col, animate=True)
                 return
             if selected is not None:
                 selected = None
@@ -601,16 +582,210 @@ def main(page: ft.Page):
                 valid_moves = game.legal_moves_from(row, col)
             refresh_board()
 
-        return ft.GestureDetector(
-            on_tap=on_tap,
-            content=ft.Container(
-                content=square_content,
-                width=square_size,
-                height=square_size,
-                bgcolor=bg,
-                border=ft.border.all(0, "transparent"),
+        def on_drag_accept(e):
+            nonlocal selected, valid_moves, hint_moves
+            if game_over or animating_move is not None:
+                return
+            if not is_human_turn():
+                return
+            try:
+                src = page.get_control(e.src_id)
+            except (AttributeError, KeyError):
+                src = None
+            if src and hasattr(src, "data") and src.data:
+                try:
+                    parts = src.data.split(",")
+                    from_row, from_col = int(parts[0]), int(parts[1])
+                except (ValueError, IndexError):
+                    return
+                selected = None
+                valid_moves = []
+                hint_moves = []
+                execute_human_move(from_row, from_col, row, col, animate=False)
+
+        def on_will_accept(e):
+            if e.data == "true":
+                square_container.border = ft.border.all(2, ft.Colors.YELLOW_400)
+                try:
+                    square_container.update()
+                except Exception:
+                    pass
+
+        def on_leave(e):
+            square_container.border = ft.border.all(0, "transparent")
+            try:
+                square_container.update()
+            except Exception:
+                pass
+
+        return ft.DragTarget(
+            group="chess",
+            content=ft.GestureDetector(
+                on_tap=on_tap,
+                content=square_container,
             ),
+            on_accept=on_drag_accept,
+            on_will_accept=on_will_accept,
+            on_leave=on_leave,
         )
+
+    def execute_human_move(from_row, from_col, to_row, to_col, animate=True):
+        """Execute a human move (click-to-move or drag-and-drop).
+
+        Args:
+            animate: If True, animate the piece sliding. If False (drag-and-drop),
+                     place the piece immediately without animation.
+
+        Returns True if the move was valid and executed.
+        """
+        nonlocal selected, valid_moves, hint_moves, puzzle_moves_made
+
+        # Validate destination is legal
+        legal_targets = game.legal_moves_from(from_row, from_col)
+        if (to_row, to_col) not in legal_targets:
+            refresh_board()
+            return False
+
+        # --- Puzzle validation ---
+        if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+            import chess as _chess
+
+            from_sq = _chess.square(from_col, 7 - from_row)
+            to_sq = _chess.square(to_col, 7 - to_row)
+            board = game.get_board()
+            piece = board.piece_at(from_sq)
+            is_promo = (
+                piece is not None
+                and piece.piece_type == _chess.PAWN
+                and (_chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0)
+            )
+            uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
+            if is_promo:
+                uci_move += "q"
+
+            puzzle_moves_made += 1
+            if not active_puzzle.is_player_move_correct(puzzle_move_index, uci_move):
+                handle_puzzle_failure()
+                selected = None
+                valid_moves = []
+                hint_moves = []
+                refresh_board()
+                page.update()
+                return True  # Move was attempted (wrong for puzzle)
+
+        # Get piece info before making the move (for animation)
+        piece_info = game.piece_at(from_row, from_col) if animate else None
+
+        game.make_move(from_row, from_col, to_row, to_col)
+        selected = None
+        valid_moves = []
+        hint_moves = []
+        deduct_move_time_and_check_game_over()
+        update_status()
+        update_undo_button()
+        update_history()
+        update_evaluation_bar()
+        update_opening_explorer()
+        save_current_state()
+
+        if animate and piece_info:
+            # Animation task handles board refresh + post-move logic
+            page.run_task(
+                _animate_then_post_move,
+                from_row,
+                from_col,
+                to_row,
+                to_col,
+                piece_info,
+            )
+        else:
+            refresh_board()
+            page.update()
+            _check_puzzle_and_bot()
+
+        return True
+
+    def _check_puzzle_and_bot():
+        """Post-move logic: check puzzle completion and trigger bot/opponent moves."""
+        nonlocal puzzle_move_index
+        if active_puzzle and active_puzzle.objective != PuzzleObjective.FREE_PLAY:
+            if active_puzzle.is_complete_after_player_move(puzzle_move_index):
+                handle_puzzle_completion()
+                page.update()
+                return
+            opponent_uci = active_puzzle.get_opponent_response(puzzle_move_index)
+            puzzle_move_index += 1
+            if opponent_uci:
+                page.run_task(play_puzzle_opponent_move, opponent_uci)
+                return
+
+        if not game_over and not is_human_turn():
+            page.run_task(bot_move_after_human)
+
+    async def animate_piece_move(from_row, from_col, to_row, to_col, piece_info):
+        """Animate a piece sliding from source to destination square."""
+        nonlocal animating_move
+
+        color, piece = piece_info
+        svg = get_svg(color, piece)
+
+        flipped = get_board_flipped()
+        from_vis_r = (7 - from_row) if flipped else from_row
+        from_vis_c = (7 - from_col) if flipped else from_col
+        to_vis_r = (7 - to_row) if flipped else to_row
+        to_vis_c = (7 - to_col) if flipped else to_col
+
+        from_x = from_vis_c * square_size
+        from_y = from_vis_r * square_size
+        to_x = to_vis_c * square_size
+        to_y = to_vis_r * square_size
+
+        pad = max(4, square_size // 8)
+        anim_piece = ft.Container(
+            content=ft.Image(
+                src=svg,
+                width=square_size - pad,
+                height=square_size - pad,
+                fit=ft.BoxFit.CONTAIN,
+            ),
+            width=square_size,
+            height=square_size,
+            alignment=ft.Alignment(0, 0),
+            left=from_x,
+            top=from_y,
+            animate_position=ft.Animation(150, ft.AnimationCurve.EASE_OUT),
+        )
+
+        # Set animation state, refresh board (hides piece at destination), add overlay
+        animating_move = (from_row, from_col, to_row, to_col)
+        refresh_board()
+        board_stack.controls.append(anim_piece)
+        page.update()
+
+        # Let initial position render
+        await asyncio.sleep(0.02)
+
+        # Animate to destination
+        anim_piece.left = to_x
+        anim_piece.top = to_y
+        try:
+            anim_piece.update()
+        except Exception:
+            pass
+
+        # Wait for animation to complete
+        await asyncio.sleep(0.18)
+
+        # Clean up
+        animating_move = None
+        if anim_piece in board_stack.controls:
+            board_stack.controls.remove(anim_piece)
+        refresh_board()
+
+    async def _animate_then_post_move(from_row, from_col, to_row, to_col, piece_info):
+        """Animate the piece move, then run post-move logic."""
+        await animate_piece_move(from_row, from_col, to_row, to_col, piece_info)
+        _check_puzzle_and_bot()
 
     def refresh_board(
         override_width: float | None = None, override_height: float | None = None
@@ -627,21 +802,35 @@ def main(page: ft.Page):
                 logical_c = 7 - visual_c if flipped else visual_c
                 row_controls.append(build_square(logical_r, logical_c))
             grid.controls.append(ft.Row(controls=row_controls, spacing=0))
+        board_stack.width = square_size * 8
+        board_stack.height = square_size * 8
         page.update()
 
     async def bot_move_after_human():
         """Yield to event loop so UI repaints, then run bot move."""
         await asyncio.sleep(0.05)
-        play_bot_turn()
+        await play_bot_turn_async()
 
-    def play_bot_turn():
-        """Get one move from bot for current side to move, apply it, and refresh UI."""
+    async def play_bot_turn_async():
+        """Get one move from bot, apply it with animation, and refresh UI."""
         nonlocal selected, valid_moves, hint_moves, game_over
+        import chess as _chess
+
         bot = get_bot_for_turn()
         if not bot or game_over:
             return
         move = bot.choose_move(game.get_board())
-        if move is None or not game.apply_move(move):
+        if move is None:
+            return
+
+        # Get piece info before applying the move (for animation)
+        from_row = 7 - _chess.square_rank(move.from_square)
+        from_col = _chess.square_file(move.from_square)
+        to_row = 7 - _chess.square_rank(move.to_square)
+        to_col = _chess.square_file(move.to_square)
+        piece_info = game.piece_at(from_row, from_col)
+
+        if not game.apply_move(move):
             return
         selected = None
         valid_moves = []
@@ -653,8 +842,12 @@ def main(page: ft.Page):
         update_evaluation_bar()
         update_opening_explorer()
         save_current_state()
-        refresh_board()
-        page.update()
+
+        if piece_info:
+            await animate_piece_move(from_row, from_col, to_row, to_col, piece_info)
+        else:
+            refresh_board()
+            page.update()
 
     async def run_bot_vs_bot():
         """Run bot-vs-bot loop in background so UI stays responsive."""
@@ -667,27 +860,10 @@ def main(page: ft.Page):
         bot_vs_bot_running = True
         try:
             while is_bot_vs_bot() and not game_over:
-                bot = get_bot_for_turn()
-                if not bot:
-                    break
-                move = bot.choose_move(game.get_board())
-                if move is None or not game.apply_move(move):
-                    break
-                selected = None
-                valid_moves = []
-                hint_moves = []  # Clear hints after bot move
-                deduct_move_time_and_check_game_over()
-                update_status()
-                update_undo_button()
-                update_history()
-                update_evaluation_bar()
-                update_opening_explorer()
-                save_current_state()
-                refresh_board()
-                page.update()
+                await play_bot_turn_async()
                 if game_over:
                     break
-                await asyncio.sleep(0.4)
+                await asyncio.sleep(0.2)
         finally:
             bot_vs_bot_running = False
 
@@ -787,13 +963,21 @@ def main(page: ft.Page):
             message.current.color = ft.Colors.RED
 
     async def play_puzzle_opponent_move(opponent_uci: str):
-        """Play the opponent's automatic response in a puzzle after a short delay."""
+        """Play the opponent's automatic response in a puzzle with animation."""
         nonlocal selected, valid_moves, hint_moves
         import chess as _chess
 
-        await asyncio.sleep(0.4)  # Brief pause so player sees their move
+        await asyncio.sleep(0.2)  # Brief pause so player sees their move
         try:
             move = _chess.Move.from_uci(opponent_uci)
+
+            # Get piece info before applying (for animation)
+            from_row = 7 - _chess.square_rank(move.from_square)
+            from_col = _chess.square_file(move.from_square)
+            to_row = 7 - _chess.square_rank(move.to_square)
+            to_col = _chess.square_file(move.to_square)
+            piece_info = game.piece_at(from_row, from_col)
+
             if game.apply_move(move):
                 selected = None
                 valid_moves = []
@@ -803,8 +987,14 @@ def main(page: ft.Page):
                 update_history()
                 update_evaluation_bar()
                 update_opening_explorer()
-                refresh_board()
-                page.update()
+
+                if piece_info:
+                    await animate_piece_move(
+                        from_row, from_col, to_row, to_col, piece_info
+                    )
+                else:
+                    refresh_board()
+                    page.update()
         except (ValueError, TypeError):
             pass  # Invalid move string, skip
 
@@ -817,6 +1007,12 @@ def main(page: ft.Page):
             _lc = 7 - _init_c if _init_flipped else _init_c
             _init_row.append(build_square(_lr, _lc))
         grid.controls.append(ft.Row(controls=_init_row, spacing=0))
+
+    board_stack = ft.Stack(
+        controls=[grid],
+        width=square_size * 8,
+        height=square_size * 8,
+    )
 
     status_bar = ft.Container(
         content=ft.Row(
@@ -2603,7 +2799,7 @@ def main(page: ft.Page):
                     [
                         ft.Container(
                             content=ft.Row(
-                                controls=[grid],
+                                controls=[board_stack],
                                 alignment=ft.MainAxisAlignment.CENTER,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             ),

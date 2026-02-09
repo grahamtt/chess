@@ -34,17 +34,17 @@ _Quick wins that improve the day-to-day experience._
 - Alternative piece sets beyond Cburnett (e.g., Merida, Alpha, pixel art)
 - Theme picker accessible from the game screen
 
-### Drag-and-Drop Movement
-- Support drag-and-drop as an alternative to click-to-move
-- Visual feedback while dragging (ghost piece, drop target highlighting)
+### Drag-and-Drop Movement ✅
+- ~~Support drag-and-drop as an alternative to click-to-move~~
+- ~~Visual feedback while dragging (ghost piece, drop target highlighting)~~
 
 ### Pawn Promotion Picker
 - Show a selection dialog when a pawn promotes (Queen, Rook, Bishop, Knight)
 - Replace the current auto-queen behavior
 
-### Move Animation
-- Smooth sliding animation when pieces move between squares
-- Animate captures and castling moves
+### Move Animation ✅
+- ~~Smooth sliding animation when pieces move between squares~~
+- ~~Animate captures and castling moves~~
 
 ### PGN Export & Import
 - Export the current game to PGN format (copy to clipboard or save to file)
