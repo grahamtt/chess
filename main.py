@@ -1782,7 +1782,8 @@ def main(page: ft.Page):
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
-        # Build status message (player names and ratings only)
+        # Build status message (channel, player names, and ratings)
+        channel_label = tv_channel or "Top Rated"
         if tv_game:
             wp = tv_game.white_player
             bp = tv_game.black_player
@@ -1794,7 +1795,7 @@ def main(page: ft.Page):
             w_name, b_name = "White", "Black"
             w_rating = b_rating = ""
         message.current.value = (
-            f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
+            f"Lichess TV [{channel_label}] — {w_name}{w_rating} vs {b_name}{b_rating}"
         )
         message.current.color = ft.Colors.TEAL
         refresh_board()
@@ -1833,7 +1834,8 @@ def main(page: ft.Page):
         b_name = bp.user_name if bp else "Black"
         w_rating = f" ({wp.rating})" if wp else ""
         b_rating = f" ({bp.rating})" if bp else ""
-        message.current.value = f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
+        channel_label = tv_channel or "Top Rated"
+        message.current.value = f"Lichess TV [{channel_label}] — {w_name}{w_rating} vs {b_name}{b_rating}"
         message.current.color = ft.Colors.TEAL
         update_clock_display()
         refresh_board()
