@@ -1,5 +1,5 @@
 {
   "snapshot": "snapshot-20260202-78b2bb8a-3b4d-43a9-b00f-b98d2e1544d5",
-  "install": "uv sync && pre-commit install",
+  "install": "uv sync && uv run pre-commit install",
   "terminals": []
 }
