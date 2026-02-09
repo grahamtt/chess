@@ -833,7 +833,9 @@ def main(page: ft.Page):
                         ft.Text("White ", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text(
                             ref=white_clock_text,
-                            value="—" if time_control_secs is None else format_clock(time_control_secs),
+                            value="—"
+                            if time_control_secs is None
+                            else format_clock(time_control_secs),
                             size=14,
                             weight=ft.FontWeight.BOLD,
                         ),
@@ -842,7 +844,9 @@ def main(page: ft.Page):
                         ),
                         ft.Text(
                             ref=black_clock_text,
-                            value="—" if time_control_secs is None else format_clock(time_control_secs),
+                            value="—"
+                            if time_control_secs is None
+                            else format_clock(time_control_secs),
                             size=14,
                         ),
                     ],
