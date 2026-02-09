@@ -1231,7 +1231,9 @@ def main(page: ft.Page):
         if history_text.current is None:
             return
         if tv_watching:
-            history_text.current.value = _format_tv_move_history() or "Waiting for moves…"
+            history_text.current.value = (
+                _format_tv_move_history() or "Waiting for moves…"
+            )
         else:
             history_text.current.value = game.get_move_history() or "No moves yet."
         try:
@@ -1725,7 +1727,9 @@ def main(page: ft.Page):
     tv_game: LichessTvGame | None = None  # Current TV game metadata
     tv_stop_requested = False  # Signal to stop the streaming background task
     tv_channel: str | None = None  # Selected channel name, or None for default
-    tv_last_move: tuple[tuple[int, int], tuple[int, int]] | None = None  # Last move highlight for TV
+    tv_last_move: tuple[tuple[int, int], tuple[int, int]] | None = (
+        None  # Last move highlight for TV
+    )
     tv_moves: list[str] = []  # Accumulated SAN moves for TV move list
     tv_prev_fen: str = ""  # FEN before the last TV move (used to compute SAN)
 
@@ -1835,7 +1839,9 @@ def main(page: ft.Page):
         w_rating = f" ({wp.rating})" if wp else ""
         b_rating = f" ({bp.rating})" if bp else ""
         channel_label = tv_channel or "Top Rated"
-        message.current.value = f"Lichess TV [{channel_label}] — {w_name}{w_rating} vs {b_name}{b_rating}"
+        message.current.value = (
+            f"Lichess TV [{channel_label}] — {w_name}{w_rating} vs {b_name}{b_rating}"
+        )
         message.current.color = ft.Colors.TEAL
         update_clock_display()
         refresh_board()
