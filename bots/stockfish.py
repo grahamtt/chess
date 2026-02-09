@@ -119,11 +119,17 @@ class StockfishBot:
         Number of search threads (default 1 — sufficient for casual play).
     hash_mb:
         Hash table size in MiB (default 16).
+    chess960:
+        If ``True``, configure the engine for Chess960 (Fischer Random)
+        positions via the ``UCI_Chess960`` option.
     """
 
     # Class-level flag: whether the engine process is shared or per-instance.
     # We use per-instance to keep things simple and safe.
     _VALID_SKILL_RANGE: ClassVar[range] = range(0, 21)
+
+    # Supported game modes for Stockfish
+    SUPPORTED_MODES: ClassVar[frozenset[str]] = frozenset({"standard", "chess960"})
 
     def __init__(
         self,
@@ -132,11 +138,13 @@ class StockfishBot:
         stockfish_path: str | None = None,
         threads: int = 1,
         hash_mb: int = 16,
+        chess960: bool = False,
     ) -> None:
         self.skill_level = max(0, min(20, skill_level))
         self.think_time = max(0.01, think_time)
         self.threads = max(1, threads)
         self.hash_mb = max(1, hash_mb)
+        self.chess960 = chess960
 
         self._path = stockfish_path or find_stockfish_path()
         self._engine: chess.engine.SimpleEngine | None = None
@@ -171,18 +179,36 @@ class StockfishBot:
         try:
             engine = chess.engine.SimpleEngine.popen_uci(self._path)
             # Configure engine options
-            engine.configure(
-                {
-                    "Threads": self.threads,
-                    "Hash": self.hash_mb,
-                    "Skill Level": self.skill_level,
-                }
-            )
+            options: dict[str, int | bool] = {
+                "Threads": self.threads,
+                "Hash": self.hash_mb,
+                "Skill Level": self.skill_level,
+            }
+            if self.chess960:
+                options["UCI_Chess960"] = True
+            engine.configure(options)
             self._engine = engine
             return engine
         except (chess.engine.EngineTerminatedError, FileNotFoundError, OSError) as exc:
             logger.error("Failed to start Stockfish: %s", exc)
             return None
+
+    def set_chess960(self, enabled: bool) -> None:
+        """Enable or disable Chess960 mode.
+
+        If the setting changes and the engine is running, it is shut down so
+        that it will be restarted with the correct ``UCI_Chess960`` option on
+        the next call.
+        """
+        if enabled != self.chess960:
+            self.chess960 = enabled
+            # Restart the engine with the new config on next use
+            self.close()
+
+    @classmethod
+    def is_mode_supported(cls, game_mode: str) -> bool:
+        """Return True if the given game mode is supported by Stockfish."""
+        return game_mode in cls.SUPPORTED_MODES
 
     def close(self) -> None:
         """Shut down the engine process (if running).

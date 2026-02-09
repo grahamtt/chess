@@ -3,6 +3,8 @@ Chess game logic using the python-chess engine.
 UI coordinates: row 0 = rank 8 (top), row 7 = rank 1 (bottom); col 0 = a-file, col 7 = h-file.
 """
 
+import random
+
 import chess
 import chess.variant
 
@@ -565,3 +567,63 @@ class AntiChessGame(ChessGame):
             else:
                 score += value  # Fewer black pieces = higher score for black
         return score
+
+
+class Chess960Game(ChessGame):
+    """Chess960 (Fischer Random Chess) variant.
+
+    Rules:
+    - Pieces on the back rank are randomised (960 possible positions).
+    - Pawns start on their normal squares.
+    - Castling is allowed (the king and rook end up on the same squares as in
+      standard castling, regardless of their starting positions).
+    - All other rules are the same as standard chess.
+    """
+
+    def __init__(self, position: int | None = None) -> None:
+        self._board = chess.Board(chess960=True)
+        if position is not None:
+            self._position = max(0, min(959, position))
+        else:
+            self._position = random.randint(0, 959)
+        self._board.set_chess960_pos(self._position)
+
+    @property
+    def chess960_position(self) -> int:
+        """Return the Chess960 starting position number (0–959)."""
+        return self._position
+
+    def reset(self, position: int | None = None) -> None:
+        """Reset with a new random Chess960 position (or a specific one)."""
+        self._board = chess.Board(chess960=True)
+        if position is not None:
+            self._position = max(0, min(959, position))
+        else:
+            self._position = random.randint(0, 959)
+        self._board.set_chess960_pos(self._position)
+
+    def set_fen(self, fen: str) -> bool:
+        """Load position from FEN. Returns True if FEN was valid."""
+        try:
+            self._board.set_fen(fen)
+            return True
+        except (ValueError, TypeError, AttributeError, AssertionError):
+            return False
+
+    def load_from_moves(self, initial_fen: str, moves_uci: list[str]) -> bool:
+        """Restore game state from an initial FEN and a list of UCI moves.
+
+        Returns True if the state was fully restored, False on any error.
+        """
+        try:
+            self._board.set_fen(initial_fen)
+            for uci in moves_uci:
+                move = chess.Move.from_uci(uci)
+                if move not in self._board.legal_moves:
+                    return False
+                self._board.push(move)
+            return True
+        except (ValueError, TypeError, AttributeError, AssertionError):
+            self._board = chess.Board(chess960=True)
+            self._board.set_chess960_pos(self._position)
+            return False
