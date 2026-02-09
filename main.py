@@ -1202,16 +1202,30 @@ def main(page: ft.Page):
         page.update()
 
     def _format_tv_move_history() -> str:
-        """Format accumulated TV moves as numbered move pairs (e.g. '1. e4 e5 2. Nf3')."""
+        """Format accumulated TV moves as numbered move pairs, one per line.
+
+        Matches the column layout used by ``ChessGame.get_move_history()``,
+        e.g.::
+
+            1. e4 e5
+            2. Nf3 Nc6
+        """
         if not tv_moves:
             return ""
-        parts: list[str] = []
-        for i, san in enumerate(tv_moves):
-            if i % 2 == 0:
-                parts.append(f"{i // 2 + 1}. {san}")
+        lines: list[str] = []
+        i = 0
+        n = 1
+        while i < len(tv_moves):
+            white = tv_moves[i]
+            black = tv_moves[i + 1] if i + 1 < len(tv_moves) else None
+            if black is not None:
+                lines.append(f"{n}. {white} {black}")
+                i += 2
             else:
-                parts.append(san)
-        return " ".join(parts)
+                lines.append(f"{n}. {white}")
+                i += 1
+            n += 1
+        return "\n".join(lines)
 
     def update_history():
         if history_text.current is None:
@@ -1768,11 +1782,7 @@ def main(page: ft.Page):
         game_over = (
             game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
         )
-        # Build status message with clock info
-        wm = wc // 60
-        ws = wc % 60
-        bm = bc // 60
-        bs = bc % 60
+        # Build status message (player names and ratings only)
         if tv_game:
             wp = tv_game.white_player
             bp = tv_game.black_player
@@ -1783,10 +1793,8 @@ def main(page: ft.Page):
         else:
             w_name, b_name = "White", "Black"
             w_rating = b_rating = ""
-        lm_str = f"  Last: {last_move_uci}" if last_move_uci else ""
         message.current.value = (
-            f"Lichess TV — {w_name}{w_rating} {wm}:{ws:02d}"
-            f" vs {b_name}{b_rating} {bm}:{bs:02d}{lm_str}"
+            f"Lichess TV — {w_name}{w_rating} vs {b_name}{b_rating}"
         )
         message.current.color = ft.Colors.TEAL
         refresh_board()
