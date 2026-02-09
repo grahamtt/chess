@@ -5,6 +5,7 @@ Chess game using Flet with python-chess engine and SVG pieces.
 import asyncio
 import time
 
+import chess
 import flet as ft
 from chess_logic import ChessGame
 from opening_book import get_opening_name, get_common_moves
@@ -478,7 +479,8 @@ def main(page: ft.Page):
         )
 
         # Check if this square is part of the most recent move
-        last_move = game.get_last_move()
+        # In TV mode, use tv_last_move since set_fen() clears the move stack
+        last_move = tv_last_move if tv_watching else game.get_last_move()
         is_last_move_square = last_move is not None and (
             (row, col) == last_move[0] or (row, col) == last_move[1]
         )
@@ -1199,10 +1201,25 @@ def main(page: ft.Page):
         update_side_panel_visibility()
         page.update()
 
+    def _format_tv_move_history() -> str:
+        """Format accumulated TV moves as numbered move pairs (e.g. '1. e4 e5 2. Nf3')."""
+        if not tv_moves:
+            return ""
+        parts: list[str] = []
+        for i, san in enumerate(tv_moves):
+            if i % 2 == 0:
+                parts.append(f"{i // 2 + 1}. {san}")
+            else:
+                parts.append(san)
+        return " ".join(parts)
+
     def update_history():
         if history_text.current is None:
             return
-        history_text.current.value = game.get_move_history() or "No moves yet."
+        if tv_watching:
+            history_text.current.value = _format_tv_move_history() or "Waiting for moves…"
+        else:
+            history_text.current.value = game.get_move_history() or "No moves yet."
         try:
             history_text.current.update()
         except RuntimeError:
@@ -1369,19 +1386,19 @@ def main(page: ft.Page):
     def update_side_panel_visibility():
         """Show or hide side-panel sections based on current mode.
 
-        - Lichess TV: hide the entire side panel (rating, eval, opening, moves).
+        - Lichess TV: show sidebar with move list only (hide rating, eval, opening).
         - Puzzles: hide ELO, evaluation, and opening sections only.
         - Normal play: show everything.
         """
-        # Hide entire side panel in TV mode
+        # Side panel is always visible (TV mode shows move list only)
         if history_panel_ref.current is not None:
-            history_panel_ref.current.visible = not tv_watching
+            history_panel_ref.current.visible = True
             try:
                 history_panel_ref.current.update()
             except RuntimeError:
                 pass
 
-        # Hide individual sections during puzzles
+        # Hide individual sections during puzzles or TV mode
         in_puzzle = active_puzzle is not None
         for ref in (elo_section_ref, eval_section_ref, opening_section_ref):
             if ref.current is not None:
@@ -1694,20 +1711,58 @@ def main(page: ft.Page):
     tv_game: LichessTvGame | None = None  # Current TV game metadata
     tv_stop_requested = False  # Signal to stop the streaming background task
     tv_channel: str | None = None  # Selected channel name, or None for default
+    tv_last_move: tuple[tuple[int, int], tuple[int, int]] | None = None  # Last move highlight for TV
+    tv_moves: list[str] = []  # Accumulated SAN moves for TV move list
+    tv_prev_fen: str = ""  # FEN before the last TV move (used to compute SAN)
+
+    def _uci_to_coords(uci: str) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        """Convert a UCI move string (e.g. 'e2e4') to ((from_row, from_col), (to_row, to_col))."""
+        if not uci or len(uci) < 4:
+            return None
+        try:
+            from_sq = chess.parse_square(uci[:2])
+            to_sq = chess.parse_square(uci[2:4])
+            from_row = 7 - chess.square_rank(from_sq)
+            from_col = chess.square_file(from_sq)
+            to_row = 7 - chess.square_rank(to_sq)
+            to_col = chess.square_file(to_sq)
+            return ((from_row, from_col), (to_row, to_col))
+        except (ValueError, IndexError):
+            return None
+
+    def _uci_to_san(fen: str, uci: str) -> str:
+        """Convert a UCI move to SAN notation given the position FEN before the move."""
+        try:
+            board = chess.Board(fen)
+            move = chess.Move.from_uci(uci)
+            return board.san(move)
+        except Exception:
+            return uci  # Fallback to UCI string
 
     def _stop_tv_stream():
         """Stop the Lichess TV stream if running."""
         nonlocal tv_watching, tv_stop_requested, tv_game, tv_channel
+        nonlocal tv_last_move, tv_moves, tv_prev_fen
         tv_stop_requested = True
         tv_watching = False
         tv_game = None
         tv_channel = None
+        tv_last_move = None
+        tv_moves = []
+        tv_prev_fen = ""
 
     def _update_tv_board(fen: str, last_move_uci: str, wc: int, bc: int):
         """Apply a TV position update to the board display."""
-        nonlocal game_over
+        nonlocal game_over, tv_last_move, tv_moves, tv_prev_fen
         if not tv_watching:
             return
+        # Track last move for board highlighting
+        tv_last_move = _uci_to_coords(last_move_uci) if last_move_uci else None
+        # Accumulate SAN move for the move list
+        if last_move_uci and tv_prev_fen:
+            san = _uci_to_san(tv_prev_fen, last_move_uci)
+            tv_moves.append(san)
+        tv_prev_fen = fen
         if not game.set_fen(fen):
             return
         game_over = (
@@ -1735,6 +1790,7 @@ def main(page: ft.Page):
         )
         message.current.color = ft.Colors.TEAL
         refresh_board()
+        update_history()
         page.update()
 
     def _start_tv_game(game_meta: LichessTvGame):
@@ -1742,12 +1798,16 @@ def main(page: ft.Page):
         nonlocal tv_game, game_over, selected, valid_moves, hint_moves
         nonlocal clock_enabled, clock_started, active_puzzle, elo_updated_this_game
         nonlocal puzzle_move_index, puzzle_start_time, puzzle_moves_made
+        nonlocal tv_last_move, tv_moves, tv_prev_fen
         tv_game = game_meta
         if not game.set_fen(game_meta.fen):
             return
         selected = None
         valid_moves = []
         hint_moves = []
+        tv_last_move = None
+        tv_moves = []
+        tv_prev_fen = game_meta.fen
         elo_updated_this_game = False
         active_puzzle = None
         puzzle_move_index = 0
@@ -1849,6 +1909,9 @@ def main(page: ft.Page):
         _stop_tv_stream()
         message.current.value = "Lichess TV stopped."
         message.current.color = ft.Colors.BLACK
+        update_side_panel_visibility()
+        update_history()
+        refresh_board()
         page.update()
 
     def show_tv_dialog(_):
