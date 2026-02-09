@@ -78,6 +78,20 @@ _Features that add strategic depth and learning tools._
 - ~~Display rating history and progress chart~~
 - Implemented in `elo.py` with standard ELO formula, dynamic K-factor, persistent JSON profile, and difficulty recommendation
 
+### Ranked / Unranked Play ✅
+- ~~Ranked toggle in Configuration dialog (only ELO-affecting when enabled)~~
+- ~~"RANKED" badge displayed in the app bar when active~~
+- ~~Ranked setting persisted in game state (survives reload)~~
+- Ranked play restrictions enforced during a game in progress:
+  - **Undo** — disabled (no take-backs in competitive play)
+  - **Hints** — disabled (no engine assistance)
+  - **Player configuration** — locked (can't swap bots mid-game)
+  - **Ranked toggle** — locked (can't downgrade to unranked mid-game)
+  - **FEN import** — disabled (can't set up an advantageous position)
+- Toggle freely between ranked/unranked before a game starts or after it ends
+- Unranked games never affect the player's ELO rating
+- Defined in `elo.py` (`is_game_ratable`, `RANKED_RESTRICTIONS`, `ranked_action_blocked`)
+
 ### Puzzle Rating & Progression ✅
 - ~~Assign difficulty ratings to puzzles (beginner, intermediate, advanced)~~
 - ~~Track solve rate, average time, and streak~~
