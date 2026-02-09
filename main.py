@@ -72,7 +72,9 @@ def main(page: ft.Page):
     selected = None  # (row, col) or None
     valid_moves = []  # list of (row, col)
     hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
-    animating_move = None  # (from_row, from_col, to_row, to_col) during move animation, else None
+    animating_move = (
+        None  # (from_row, from_col, to_row, to_col) during move animation, else None
+    )
     game_over = False
     message = ft.Ref[ft.Text]()
     history_text = ft.Ref[ft.Text]()
@@ -640,19 +642,14 @@ def main(page: ft.Page):
             is_promo = (
                 piece is not None
                 and piece.piece_type == _chess.PAWN
-                and (
-                    _chess.square_rank(to_sq) == 7
-                    or _chess.square_rank(to_sq) == 0
-                )
+                and (_chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0)
             )
             uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
             if is_promo:
                 uci_move += "q"
 
             puzzle_moves_made += 1
-            if not active_puzzle.is_player_move_correct(
-                puzzle_move_index, uci_move
-            ):
+            if not active_puzzle.is_player_move_correct(puzzle_move_index, uci_move):
                 handle_puzzle_failure()
                 selected = None
                 valid_moves = []
@@ -680,7 +677,11 @@ def main(page: ft.Page):
             # Animation task handles board refresh + post-move logic
             page.run_task(
                 _animate_then_post_move,
-                from_row, from_col, to_row, to_col, piece_info,
+                from_row,
+                from_col,
+                to_row,
+                to_col,
+                piece_info,
             )
         else:
             refresh_board()
