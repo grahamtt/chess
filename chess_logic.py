@@ -4,6 +4,7 @@ UI coordinates: row 0 = rank 8 (top), row 7 = rank 1 (bottom); col 0 = a-file, c
 """
 
 import chess
+import chess.variant
 
 
 def _square_to_ui(square: chess.Square) -> tuple[int, int]:
@@ -316,4 +317,251 @@ class ChessGame:
             else:
                 score += CHECK_BONUS
 
+        return score
+
+
+class AntiChessGame(ChessGame):
+    """Antichess (losing chess / suicide chess) variant.
+
+    Rules:
+    - The objective is to lose all your pieces.
+    - If a capture is available, it must be taken.
+    - If multiple captures are available, the player may choose which one.
+    - Kings can be captured like any other piece (no check/checkmate).
+    - Pawns can be promoted to king (in addition to Q, R, B, N).
+    - No castling.
+    - Stalemate is a win for the stalemated player.
+    - The player who loses all pieces wins.
+    """
+
+    def __init__(self) -> None:
+        # Use the antichess variant board from python-chess
+        self._board = chess.variant.AntichessBoard()
+
+    def reset(self) -> None:
+        self._board = chess.variant.AntichessBoard()
+
+    def set_fen(self, fen: str) -> bool:
+        """Load position from FEN. Returns True if FEN was valid."""
+        try:
+            self._board.set_fen(fen)
+            return True
+        except (ValueError, TypeError, AttributeError, AssertionError):
+            return False
+
+    def legal_moves_from(self, row: int, col: int) -> list[tuple[int, int]]:
+        """Return list of unique (row, col) squares that the piece can move to.
+
+        Overridden to deduplicate promotion moves (which share the same
+        destination square but differ in the promotion piece).
+        """
+        from_sq = _ui_to_square(row, col)
+        seen: set[tuple[int, int]] = set()
+        result: list[tuple[int, int]] = []
+        for m in self._board.legal_moves:
+            if m.from_square == from_sq:
+                sq = _square_to_ui(m.to_square)
+                if sq not in seen:
+                    seen.add(sq)
+                    result.append(sq)
+        return result
+
+    def make_move(
+        self,
+        from_row: int,
+        from_col: int,
+        to_row: int,
+        to_col: int,
+        promotion: int | None = None,
+    ) -> bool:
+        """Play the move if legal.
+
+        In antichess, promotion can be to king as well. If *promotion* is not
+        specified and the move is a promotion, default to queen.
+        Returns True if moved.
+        """
+        from_sq = _ui_to_square(from_row, from_col)
+        to_sq = _ui_to_square(to_row, to_col)
+        candidates = [
+            m
+            for m in self._board.legal_moves
+            if m.from_square == from_sq and m.to_square == to_sq
+        ]
+        if not candidates:
+            return False
+        if promotion is not None:
+            move = next(
+                (m for m in candidates if m.promotion == promotion),
+                candidates[0],
+            )
+        else:
+            move = next(
+                (m for m in candidates if m.promotion == chess.QUEEN),
+                candidates[0],
+            )
+        try:
+            self._board.push(move)
+        except (AssertionError, ValueError):
+            return False
+        return True
+
+    def is_promotion_move(
+        self, from_row: int, from_col: int, to_row: int, to_col: int
+    ) -> bool:
+        """Return True if the move from (from_row, from_col) to (to_row, to_col)
+        is a pawn promotion (there will be multiple candidate legal moves with
+        different promotion pieces)."""
+        from_sq = _ui_to_square(from_row, from_col)
+        to_sq = _ui_to_square(to_row, to_col)
+        candidates = [
+            m
+            for m in self._board.legal_moves
+            if m.from_square == from_sq and m.to_square == to_sq
+        ]
+        return any(m.promotion is not None for m in candidates)
+
+    def get_promotion_choices(self) -> list[int]:
+        """Return the list of promotion piece types available in antichess.
+
+        Includes king (chess.KING = 6) which is unique to antichess.
+        """
+        return [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.KING]
+
+    def is_checkmate(self) -> bool:
+        """No checkmate in antichess."""
+        return False
+
+    def is_stalemate(self) -> bool:
+        """In antichess, stalemate (no legal moves) is a win for the stalemated player."""
+        return self._board.is_stalemate()
+
+    def is_in_check(self) -> bool:
+        """No check in antichess."""
+        return False
+
+    def is_only_kings_left(self) -> bool:
+        """Not relevant in antichess since kings can be captured, but keep the
+        interface consistent."""
+        piece_map = self._board.piece_map()
+        if len(piece_map) != 2:
+            return False
+        return all(p.piece_type == chess.KING for p in piece_map.values())
+
+    def is_antichess_win(self) -> bool:
+        """Return True if the current player to move has won in antichess.
+
+        A player wins by:
+        - Losing all their pieces (is_variant_loss for the side *not* to move
+          means the other side ran out of pieces).
+        - Being stalemated (no legal moves).
+        """
+        return self._board.is_variant_win()
+
+    def is_antichess_loss(self) -> bool:
+        """Return True if the current player to move has lost in antichess."""
+        return self._board.is_variant_loss()
+
+    def is_antichess_game_over(self) -> bool:
+        """Return True if the antichess game is over."""
+        return self._board.is_game_over()
+
+    def antichess_result(self) -> str | None:
+        """Return the result string ('1-0', '0-1', '1/2-1/2') or None if not over."""
+        if not self._board.is_game_over():
+            return None
+        return self._board.result()
+
+    def has_captures(self) -> bool:
+        """Return True if the current side to move has at least one capture available.
+
+        In antichess, captures are mandatory — this helper is used for UI hints.
+        """
+        for move in self._board.legal_moves:
+            if self._board.is_capture(move):
+                return True
+        return False
+
+    def load_from_moves(self, initial_fen: str, moves_uci: list[str]) -> bool:
+        """Restore game state from an initial FEN and a list of UCI moves.
+
+        Returns True if the state was fully restored, False on any error.
+        """
+        try:
+            self._board.set_fen(initial_fen)
+            for uci in moves_uci:
+                move = chess.Move.from_uci(uci)
+                if move not in self._board.legal_moves:
+                    return False
+                self._board.push(move)
+            return True
+        except (ValueError, TypeError, AttributeError, AssertionError):
+            self._board = chess.variant.AntichessBoard()
+            return False
+
+    def get_move_history(self) -> str:
+        """Return move history as SAN text.
+
+        Works the same as the parent but uses the antichess board for SAN
+        generation (since move legality differs).
+        """
+        if not self._board.move_stack:
+            return ""
+        sans: list[str] = []
+        stack = self._board.move_stack
+        for i, move in enumerate(stack):
+            temp = self._board.copy()
+            for _ in range(len(stack) - i):
+                temp.pop()
+            try:
+                sans.append(temp.san(move))
+            except (AssertionError, ValueError):
+                sans.append(move.uci())
+        lines: list[str] = []
+        idx = 0
+        n = 1
+        while idx < len(sans):
+            white = sans[idx]
+            black = sans[idx + 1] if idx + 1 < len(sans) else None
+            if black is not None:
+                lines.append(f"{n}. {white} {black}")
+                idx += 2
+            else:
+                lines.append(f"{n}. {white}")
+                idx += 1
+            n += 1
+        return "\n".join(lines)
+
+    def get_position_evaluation(self, depth: int = 2) -> int:
+        """Antichess evaluation: fewer pieces = better (inverted from standard).
+
+        Returns score in centipawns from white's perspective.
+        Positive = white is winning (has fewer pieces).
+        """
+        if self._board.is_game_over():
+            result = self._board.result()
+            if result == "1-0":
+                return 100_000
+            elif result == "0-1":
+                return -100_000
+            return 0
+
+        PIECE_VALUES = {
+            chess.PAWN: 100,
+            chess.KNIGHT: 300,
+            chess.BISHOP: 300,
+            chess.ROOK: 500,
+            chess.QUEEN: 900,
+            chess.KING: 300,  # King can be captured in antichess
+        }
+        score = 0
+        for square in chess.SQUARES:
+            piece = self._board.piece_at(square)
+            if piece is None:
+                continue
+            value = PIECE_VALUES.get(piece.piece_type, 100)
+            # In antichess, having fewer pieces is BETTER
+            if piece.color == chess.WHITE:
+                score -= value  # Fewer white pieces = higher score for white
+            else:
+                score += value  # Fewer black pieces = higher score for black
         return score

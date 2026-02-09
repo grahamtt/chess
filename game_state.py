@@ -30,6 +30,9 @@ class GameState:
     white_player: str = "human"
     black_player: str = "human"
 
+    # Game mode: "standard" or "antichess"
+    game_mode: str = "standard"
+
     # Clock / time control
     time_control_secs: int | None = 300  # None means unlimited
     white_remaining_secs: float = 300.0

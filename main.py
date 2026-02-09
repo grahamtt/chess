@@ -6,7 +6,7 @@ import asyncio
 import time
 
 import flet as ft
-from chess_logic import ChessGame
+from chess_logic import AntiChessGame, ChessGame
 from opening_book import get_opening_name, get_common_moves
 from pieces_svg import get_svg
 from lichess import (
@@ -73,6 +73,7 @@ def main(page: ft.Page):
     page.window.min_height = 560
 
     game = ChessGame()
+    game_mode = "standard"  # "standard" or "antichess"
     selected = None  # (row, col) or None
     valid_moves = []  # list of (row, col)
     hint_moves = []  # list of ((from_row, from_col), (to_row, to_col), score, san) for hint visualization
@@ -86,6 +87,7 @@ def main(page: ft.Page):
     opening_name_text = ft.Ref[ft.Text]()
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
+    app_bar_title_ref = ft.Ref[ft.Text]()
 
     # Refs for side-panel sections (toggled visible/hidden during puzzles/TV)
     history_panel_ref = ft.Ref[ft.Container]()
@@ -144,6 +146,18 @@ def main(page: ft.Page):
 
     # --- Lichess TV state (declared early so closures can see it) ---
     tv_watching = False  # True when streaming Lichess TV
+
+    def update_app_bar_title():
+        """Update the app bar title to reflect the current game mode."""
+        if app_bar_title_ref.current is not None:
+            if game_mode == "antichess":
+                app_bar_title_ref.current.value = "Antichess"
+            else:
+                app_bar_title_ref.current.value = "Chess"
+            try:
+                app_bar_title_ref.current.update()
+            except RuntimeError:
+                pass
 
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
@@ -283,6 +297,7 @@ def main(page: ft.Page):
             moves_uci=game.get_moves_uci(),
             white_player=white_player,
             black_player=black_player,
+            game_mode=game_mode,
             time_control_secs=time_control_secs,
             white_remaining_secs=white_remaining_secs,
             black_remaining_secs=black_remaining_secs,
@@ -536,6 +551,14 @@ def main(page: ft.Page):
                         _chess.square_rank(to_sq) == 7 or _chess.square_rank(to_sq) == 0
                     )
                 )
+
+                # In antichess mode, show promotion dialog with king option
+                if is_promo and game_mode == "antichess" and isinstance(game, AntiChessGame):
+                    _show_antichess_promotion_dialog(
+                        selected[0], selected[1], row, col
+                    )
+                    return
+
                 uci_move = f"{_chess.square_name(from_sq)}{_chess.square_name(to_sq)}"
                 if is_promo:
                     uci_move += "q"  # Default queen promotion for puzzle checks
@@ -558,40 +581,7 @@ def main(page: ft.Page):
                         page.update()
                         return
 
-                game.make_move(selected[0], selected[1], row, col)
-                selected = None
-                valid_moves = []
-                hint_moves = []  # Clear hints after making a move
-                deduct_move_time_and_check_game_over()
-                update_status()
-                update_undo_button()
-                update_history()
-                update_evaluation_bar()
-                update_opening_explorer()
-                save_current_state()
-                refresh_board()
-                page.update()
-
-                # --- Puzzle completion check ---
-                if (
-                    active_puzzle
-                    and active_puzzle.objective != PuzzleObjective.FREE_PLAY
-                ):
-                    if active_puzzle.is_complete_after_player_move(puzzle_move_index):
-                        handle_puzzle_completion()
-                        page.update()
-                        return
-                    # Play opponent's automatic response
-                    opponent_uci = active_puzzle.get_opponent_response(
-                        puzzle_move_index
-                    )
-                    puzzle_move_index += 1
-                    if opponent_uci:
-                        page.run_task(play_puzzle_opponent_move, opponent_uci)
-                        return
-
-                if not game_over and not is_human_turn():
-                    page.run_task(bot_move_after_human)
+                _complete_move(selected[0], selected[1], row, col)
                 return
             if selected is not None:
                 selected = None
@@ -611,6 +601,93 @@ def main(page: ft.Page):
                 border=ft.border.all(0, "transparent"),
             ),
         )
+
+    def _complete_move(from_row, from_col, to_row, to_col, promotion=None):
+        """Finish applying a human move (shared by normal tap and promotion dialog)."""
+        nonlocal selected, valid_moves, hint_moves, game_over
+        nonlocal active_puzzle, puzzle_move_index, puzzle_moves_made
+
+        if promotion is not None and isinstance(game, AntiChessGame):
+            game.make_move(from_row, from_col, to_row, to_col, promotion=promotion)
+        else:
+            game.make_move(from_row, from_col, to_row, to_col)
+        selected = None
+        valid_moves = []
+        hint_moves = []
+        deduct_move_time_and_check_game_over()
+        update_status()
+        update_undo_button()
+        update_history()
+        update_evaluation_bar()
+        update_opening_explorer()
+        save_current_state()
+        refresh_board()
+        page.update()
+
+        # --- Puzzle completion check ---
+        if (
+            active_puzzle
+            and active_puzzle.objective != PuzzleObjective.FREE_PLAY
+        ):
+            if active_puzzle.is_complete_after_player_move(puzzle_move_index):
+                handle_puzzle_completion()
+                page.update()
+                return
+            opponent_uci = active_puzzle.get_opponent_response(puzzle_move_index)
+            puzzle_move_index += 1
+            if opponent_uci:
+                page.run_task(play_puzzle_opponent_move, opponent_uci)
+                return
+
+        if not game_over and not is_human_turn():
+            page.run_task(bot_move_after_human)
+
+    def _show_antichess_promotion_dialog(from_row, from_col, to_row, to_col):
+        """Show a dialog letting the player choose a promotion piece in antichess.
+
+        Includes king as a promotion option (unique to antichess).
+        """
+        import chess as _chess
+
+        piece_names = {
+            _chess.QUEEN: ("Queen", "Q"),
+            _chess.ROOK: ("Rook", "R"),
+            _chess.BISHOP: ("Bishop", "B"),
+            _chess.KNIGHT: ("Knight", "N"),
+            _chess.KING: ("King", "K"),
+        }
+        color = game.turn  # "white" or "black"
+
+        def make_choice(piece_type):
+            def handler(_):
+                page.pop_dialog()
+                _complete_move(from_row, from_col, to_row, to_col, promotion=piece_type)
+            return handler
+
+        buttons = []
+        for pt in [_chess.QUEEN, _chess.ROOK, _chess.BISHOP, _chess.KNIGHT, _chess.KING]:
+            name, symbol = piece_names[pt]
+            svg = get_svg(color, symbol)
+            buttons.append(
+                ft.TextButton(
+                    content=ft.Row(
+                        [
+                            ft.Image(src=svg, width=32, height=32, fit=ft.BoxFit.CONTAIN),
+                            ft.Text(name, size=14),
+                        ],
+                        spacing=8,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                    on_click=make_choice(pt),
+                )
+            )
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Promote pawn to..."),
+            content=ft.Column(buttons, tight=True, spacing=4),
+            open=False,
+        )
+        page.show_dialog(dialog)
 
     def refresh_board(
         override_width: float | None = None, override_height: float | None = None
@@ -696,6 +773,39 @@ def main(page: ft.Page):
         # Clear hints when it's not a human's turn
         if not is_human_turn():
             hint_moves = []
+
+        # --- Antichess game-over handling ---
+        if game_mode == "antichess" and isinstance(game, AntiChessGame):
+            if game.is_antichess_game_over():
+                result = game.antichess_result()
+                if result == "1-0":
+                    message.current.value = "White wins! (lost all pieces or stalemated)"
+                    message.current.color = ft.Colors.BLUE
+                    game_over = True
+                    handle_game_over_elo(1.0)
+                elif result == "0-1":
+                    message.current.value = "Black wins! (lost all pieces or stalemated)"
+                    message.current.color = ft.Colors.BLUE
+                    game_over = True
+                    handle_game_over_elo(0.0)
+                else:
+                    message.current.value = "Draw."
+                    message.current.color = ft.Colors.ORANGE
+                    game_over = True
+                    handle_game_over_elo(0.5)
+                return
+            # Show capture-required hint
+            if game.has_captures():
+                message.current.value = (
+                    f"{game.turn.capitalize()} to move. (Capture required!)"
+                )
+                message.current.color = ft.Colors.DEEP_ORANGE
+            else:
+                message.current.value = f"{game.turn.capitalize()} to move."
+                message.current.color = ft.Colors.BLACK
+            return
+
+        # --- Standard chess game-over handling ---
         if game.is_checkmate():
             winner = "Black" if game.turn == "white" else "White"
             # For CHECKMATE_IN_N puzzles, checkmate means puzzle completion
@@ -864,6 +974,7 @@ def main(page: ft.Page):
         returning to a blank game.
         """
         nonlocal \
+            game, \
             selected, \
             valid_moves, \
             hint_moves, \
@@ -927,7 +1038,13 @@ def main(page: ft.Page):
             return
 
         # Normal new game reset (no puzzle active)
-        game.reset()
+        # Ensure the correct game object is used for the current mode
+        if game_mode == "antichess" and not isinstance(game, AntiChessGame):
+            game = AntiChessGame()
+        elif game_mode != "antichess" and isinstance(game, AntiChessGame):
+            game = ChessGame()
+        else:
+            game.reset()
         selected = None
         valid_moves = []
         hint_moves = []
@@ -947,9 +1064,13 @@ def main(page: ft.Page):
             white_remaining_secs = float(time_control_secs)
             black_remaining_secs = float(time_control_secs)
         move_start_time = time.monotonic()
-        message.current.value = "White to move."
+        if game_mode == "antichess":
+            message.current.value = "Antichess — White to move. Lose all your pieces!"
+        else:
+            message.current.value = "White to move."
         message.current.color = ft.Colors.BLACK
         clear_game_state()
+        update_app_bar_title()
         update_clock_display()
         refresh_board()
         update_undo_button()
@@ -1224,10 +1345,18 @@ def main(page: ft.Page):
     config_time_ref = ft.Ref[ft.Dropdown]()
     config_white_ref = ft.Ref[ft.Dropdown]()
     config_black_ref = ft.Ref[ft.Dropdown]()
+    config_game_mode_ref = ft.Ref[ft.Dropdown]()
+
+    game_mode_options = [
+        ft.DropdownOption(key="standard", text="Standard"),
+        ft.DropdownOption(key="antichess", text="Antichess (Losing Chess)"),
+    ]
 
     def apply_config(_=None):
         """Apply configuration from dialog and close it."""
         nonlocal \
+            game, \
+            game_mode, \
             white_player, \
             black_player, \
             time_control_secs, \
@@ -1235,8 +1364,32 @@ def main(page: ft.Page):
             clock_started, \
             white_remaining_secs, \
             black_remaining_secs, \
-            move_start_time
+            move_start_time, \
+            selected, \
+            valid_moves, \
+            hint_moves, \
+            game_over, \
+            elo_updated_this_game
         page.pop_dialog()
+
+        # Handle game mode change — requires a full reset
+        new_mode = "standard"
+        if config_game_mode_ref.current is not None:
+            new_mode = config_game_mode_ref.current.value or "standard"
+        mode_changed = new_mode != game_mode
+        if mode_changed:
+            game_mode = new_mode
+            if game_mode == "antichess":
+                game = AntiChessGame()
+            else:
+                game = ChessGame()
+            selected = None
+            valid_moves = []
+            hint_moves = []
+            game_over = False
+            elo_updated_this_game = False
+            clear_game_state()
+
         if config_time_ref.current is not None:
             raw = config_time_ref.current.value or "300"
             if raw == "unlimited":
@@ -1257,6 +1410,7 @@ def main(page: ft.Page):
             white_player = config_white_ref.current.value or "human"
         if config_black_ref.current is not None:
             black_player = config_black_ref.current.value or "human"
+        update_app_bar_title()
         update_status()
         update_clock_display()
         update_evaluation_bar()
@@ -1274,6 +1428,13 @@ def main(page: ft.Page):
         title=ft.Text("Configuration"),
         content=ft.Column(
             [
+                ft.Text("Game mode", size=14, weight=ft.FontWeight.W_500),
+                ft.Dropdown(
+                    ref=config_game_mode_ref,
+                    value=game_mode,
+                    width=200,
+                    options=game_mode_options,
+                ),
                 ft.Text("Time control", size=14, weight=ft.FontWeight.W_500),
                 ft.Dropdown(
                     ref=config_time_ref,
@@ -1311,6 +1472,9 @@ def main(page: ft.Page):
     def show_config_dialog(_):
         page.show_dialog(config_dialog)
         # Sync dialog dropdowns to current config (in case dialog was opened before)
+        if config_game_mode_ref.current is not None:
+            config_game_mode_ref.current.value = game_mode
+            config_game_mode_ref.current.update()
         if config_time_ref.current is not None:
             config_time_ref.current.value = (
                 "unlimited" if time_control_secs is None else str(time_control_secs)
@@ -2530,7 +2694,11 @@ def main(page: ft.Page):
     )
 
     app_bar = ft.AppBar(
-        title=ft.Text("Chess", weight=ft.FontWeight.BOLD),
+        title=ft.Text(
+            ref=app_bar_title_ref,
+            value="Chess" if game_mode == "standard" else "Antichess",
+            weight=ft.FontWeight.BOLD,
+        ),
         center_title=True,
         bgcolor=ft.Colors.SURFACE,
         actions=[
@@ -2577,6 +2745,13 @@ def main(page: ft.Page):
     # --- Restore saved game state on startup ---
     _saved = load_game_state()
     if _saved is not None:
+        # Restore game mode first so we use the right game object
+        if _saved.game_mode == "antichess":
+            game_mode = "antichess"
+            game = AntiChessGame()
+        else:
+            game_mode = "standard"
+            game = ChessGame()
         if game.load_from_moves(_saved.initial_fen, _saved.moves_uci):
             white_player = _saved.white_player
             black_player = _saved.black_player
@@ -2586,9 +2761,14 @@ def main(page: ft.Page):
             clock_enabled = _saved.clock_enabled
             clock_started = _saved.clock_started
             move_start_time = time.monotonic()
-            game_over = (
-                game.is_checkmate() or game.is_stalemate() or game.is_only_kings_left()
-            )
+            if game_mode == "antichess" and isinstance(game, AntiChessGame):
+                game_over = game.is_antichess_game_over()
+            else:
+                game_over = (
+                    game.is_checkmate()
+                    or game.is_stalemate()
+                    or game.is_only_kings_left()
+                )
 
     update_status()
     page.add(
