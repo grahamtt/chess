@@ -88,6 +88,7 @@ _Features that add strategic depth and learning tools._
   - **Player configuration** — locked (can't swap bots mid-game)
   - **Ranked toggle** — locked (can't downgrade to unranked mid-game)
   - **FEN import** — disabled (can't set up an advantageous position)
+  - **Forfeit** — starting a new game mid-match counts as a loss (ELO decreases)
 - Toggle freely between ranked/unranked before a game starts or after it ends
 - Unranked games never affect the player's ELO rating
 - Defined in `elo.py` (`is_game_ratable`, `RANKED_RESTRICTIONS`, `ranked_action_blocked`)

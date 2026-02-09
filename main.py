@@ -1212,11 +1212,32 @@ def main(page: ft.Page):
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
     )
 
+    def handle_forfeit_elo():
+        """Record a loss if a ranked game in progress is abandoned (forfeit).
+
+        Called before resetting the board when the player starts a new game
+        or otherwise leaves a ranked game that hasn't finished naturally.
+        """
+        if not ranked:
+            return
+        if elo_updated_this_game:
+            return
+        if active_puzzle is not None:
+            return
+        if not _is_game_in_progress():
+            return
+        # Treat forfeit as a loss for the human player
+        if white_player == "human" and black_player != "human":
+            handle_game_over_elo(0.0)  # white (human) loses
+        elif black_player == "human" and white_player != "human":
+            handle_game_over_elo(1.0)  # white (bot) wins → human loses
+
     def do_new_game(_):
         """Reset the game (called after confirmation).
 
         When a puzzle is active the current puzzle is restarted instead of
-        returning to a blank game.
+        returning to a blank game.  In ranked mode, abandoning a game in
+        progress counts as a forfeit (loss).
         """
         nonlocal \
             game, \
@@ -1238,6 +1259,9 @@ def main(page: ft.Page):
         # Stop TV stream if active
         if tv_watching:
             _stop_tv_stream()
+
+        # In ranked mode, abandoning a game in progress counts as a forfeit
+        handle_forfeit_elo()
 
         # If a puzzle is active, restart it instead of resetting to a new game
         current_puzzle = active_puzzle
@@ -1894,8 +1918,15 @@ def main(page: ft.Page):
             confirm_label = "Restart"
         else:
             title = "New game"
-            content = "Start a new game? The current game will be lost."
-            confirm_label = "New game"
+            if ranked and _is_game_in_progress():
+                content = (
+                    "Forfeit this ranked game? "
+                    "This will count as a loss and your ELO rating will decrease."
+                )
+                confirm_label = "Forfeit"
+            else:
+                content = "Start a new game? The current game will be lost."
+                confirm_label = "New game"
         dialog = ft.AlertDialog(
             title=ft.Text(title),
             content=ft.Text(content),
