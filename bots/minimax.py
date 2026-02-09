@@ -1,13 +1,22 @@
 """
 Minimax bot with configurable search depth and alpha-beta pruning.
 Uses material + positional scoring (center control, mobility, piece-square).
+
+For antichess (losing chess) the evaluation is inverted: fewer own pieces is
+better and the goal is to lose all material or be stalemated.
 """
 
 import random
 
 import chess
+import chess.variant
 
 from bots.base import weighted_random_choice
+
+
+def _is_antichess(board: chess.Board) -> bool:
+    """Return True if *board* is an antichess variant board."""
+    return isinstance(board, chess.variant.AntichessBoard)
 
 
 # Standard piece values (centipawns)
@@ -18,6 +27,16 @@ PIECE_VALUES = {
     chess.ROOK: 500,
     chess.QUEEN: 900,
     chess.KING: 0,  # Not used in material; king is always on board
+}
+
+# Piece values for antichess (king can be captured, so it has a material value)
+ANTICHESS_PIECE_VALUES = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 300,
+    chess.BISHOP: 300,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 300,
 }
 
 # Center and extended center squares — bonus for control
@@ -110,8 +129,13 @@ def _evaluate_material_and_position(board: chess.Board) -> int:
 def evaluate(board: chess.Board) -> int:
     """
     Evaluate position from the side to move's perspective.
-    Includes material, center control, pawn advancement, knight placement, and mobility.
+
+    Automatically dispatches to the antichess evaluator when the board is an
+    :class:`chess.variant.AntichessBoard`.
     """
+    if _is_antichess(board):
+        return evaluate_antichess(board)
+
     if board.is_checkmate():
         return -100_000 if board.turn else 100_000
     if board.is_stalemate() or board.is_insufficient_material():
@@ -128,6 +152,82 @@ def evaluate(board: chess.Board) -> int:
     # Having the enemy king in check is good: side to move in check = bad for them (good for us after negamax)
     if board.is_check():
         score -= CHECK_BONUS
+
+    return score
+
+
+# ---------------------------------------------------------------------------
+# Antichess (losing chess) evaluation
+# ---------------------------------------------------------------------------
+
+# Weights for the antichess heuristic
+_ANTI_MATERIAL_WEIGHT = 1       # Per-piece-value penalty for own material
+_ANTI_PIECE_COUNT_BONUS = 80    # Extra bonus per opponent piece (they're further from winning)
+_ANTI_MOBILITY_PENALTY = 5      # Fewer own moves → closer to stalemate (a win!)
+_ANTI_CAPTURE_BONUS = 20        # Having captures available is good (chance to lose pieces)
+_ANTI_PIECE_EXPOSURE_BONUS = 8  # Bonus for pieces that can be captured by opponent
+
+
+def evaluate_antichess(board: chess.Board) -> int:
+    """Evaluate an antichess position from the side to move's perspective.
+
+    In antichess the objective is to lose all your pieces, so:
+    * Fewer own pieces is better (closer to winning).
+    * More opponent pieces is better (opponent further from winning).
+    * Fewer own legal moves is better (closer to stalemate, which is a win).
+    * Having capture opportunities is good (way to shed pieces).
+    * Having own pieces that the opponent can capture is good.
+    """
+    # --- Terminal positions ---
+    if board.is_game_over():
+        if board.is_variant_win():
+            return 100_000   # We won (lost all pieces or stalemated)
+        if board.is_variant_loss():
+            return -100_000  # We lost
+        return 0             # Draw
+
+    score = 0
+    our_piece_count = 0
+    their_piece_count = 0
+
+    # Material: fewer own pieces = better (inverted from standard chess)
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece is None:
+            continue
+        value = ANTICHESS_PIECE_VALUES.get(piece.piece_type, 100)
+        if piece.color == board.turn:
+            score -= value * _ANTI_MATERIAL_WEIGHT
+            our_piece_count += 1
+        else:
+            score += value * _ANTI_MATERIAL_WEIGHT
+            their_piece_count += 1
+
+    # Piece-count bonus: strongly prefer having fewer of our pieces
+    score -= our_piece_count * _ANTI_PIECE_COUNT_BONUS
+    score += their_piece_count * _ANTI_PIECE_COUNT_BONUS
+
+    # Mobility: fewer legal moves is closer to stalemate (a win)
+    our_moves = list(board.legal_moves)
+    score -= len(our_moves) * _ANTI_MOBILITY_PENALTY
+
+    # Captures: having capture moves means we can shed pieces
+    capture_count = sum(1 for m in our_moves if board.is_capture(m))
+    score += capture_count * _ANTI_CAPTURE_BONUS
+
+    # Piece exposure: bonus for own pieces that can be captured by the opponent
+    # (opponent will be forced to capture them on their turn)
+    board.push(chess.Move.null())  # Switch to opponent's turn
+    opp_captures = set()
+    for m in board.legal_moves:
+        if board.is_capture(m):
+            opp_captures.add(m.to_square)
+    board.pop()
+    # Count how many of our pieces are attacked (could be captured)
+    for sq in opp_captures:
+        piece = board.piece_at(sq)
+        if piece is not None and piece.color == board.turn:
+            score += _ANTI_PIECE_EXPOSURE_BONUS
 
     return score
 

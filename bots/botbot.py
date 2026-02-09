@@ -2,11 +2,15 @@
 BotBot: rule-based + one-ply greedy evaluation.
 Designed to hold its own against intermediate human players without multi-ply search.
 Uses: mate-in-one, winning/safe captures, checks, then best position by evaluation.
+
+For antichess boards the strategy is simplified to one-ply greedy with the
+antichess evaluator (no checkmate / check logic applies).
 """
 
 import random
 
 import chess
+import chess.variant
 
 from bots.base import weighted_random_choice
 from bots.minimax import evaluate
@@ -101,6 +105,10 @@ class BotBot:
         if not legal:
             return None
 
+        # --- Antichess: use one-ply greedy with the antichess evaluator ---
+        if isinstance(board, chess.variant.AntichessBoard):
+            return self._choose_move_antichess(board, legal)
+
         # 1) Mate in one
         for move in legal:
             board.push(move)
@@ -164,3 +172,32 @@ class BotBot:
         else:
             # Only unsafe moves available, use weighted selection
             return weighted_random_choice(unsafe_moves, self.randomness, self._rng)
+
+    def _choose_move_antichess(
+        self, board: chess.Board, legal: list[chess.Move]
+    ) -> chess.Move:
+        """Antichess strategy: one-ply greedy using the antichess evaluator.
+
+        In antichess:
+        - There is no check or checkmate.
+        - Captures are forced, so when captures exist all legal moves are captures.
+        - We *want* to lose material, so prefer captures where we sacrifice
+          high-value pieces for low-value ones (inverted exchange).
+        """
+        # Check for immediate variant win (lose all pieces / force stalemate)
+        for move in legal:
+            board.push(move)
+            if board.is_variant_win():
+                board.pop()
+                return move
+            board.pop()
+
+        # One-ply greedy: pick the move that gives the best antichess evaluation
+        scored_moves: list[tuple[float, chess.Move]] = []
+        for move in legal:
+            board.push(move)
+            score = -evaluate(board)  # negated: opponent's perspective → ours
+            board.pop()
+            scored_moves.append((score, move))
+
+        return weighted_random_choice(scored_moves, self.randomness, self._rng)
