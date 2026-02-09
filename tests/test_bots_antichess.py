@@ -8,7 +8,6 @@ outperform shallower search (not the opposite).
 
 import chess
 import chess.variant
-import pytest
 
 from bots.botbot import BotBot
 from bots.minimax import (
