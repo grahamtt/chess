@@ -314,3 +314,48 @@ class TestIntegration:
         save_game_state(GameState(), path)
         clear_game_state(path)
         assert load_game_state(path) is None
+
+    def test_game_mode_default(self):
+        """GameState defaults to 'standard' game mode."""
+        state = GameState()
+        assert state.game_mode == "standard"
+
+    def test_game_mode_antichess_roundtrip(self, tmp_path):
+        """Antichess game mode is saved and restored correctly."""
+        path = tmp_path / "save.json"
+        state = GameState(
+            game_mode="antichess",
+            white_player="human",
+            black_player="human",
+        )
+        save_game_state(state, path)
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.game_mode == "antichess"
+
+    def test_game_mode_antichess_with_moves(self, tmp_path):
+        """Antichess game with moves persists correctly."""
+        from chess_logic import AntiChessGame
+
+        path = tmp_path / "save.json"
+        game = AntiChessGame()
+        game.make_move(6, 4, 4, 4)  # e2e4
+        game.make_move(1, 3, 3, 3)  # d7d5
+
+        state = GameState(
+            initial_fen=game.get_initial_fen(),
+            moves_uci=game.get_moves_uci(),
+            game_mode="antichess",
+        )
+        save_game_state(state, path)
+
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.game_mode == "antichess"
+
+        # Restore into a fresh antichess game
+        game2 = AntiChessGame()
+        assert game2.load_from_moves(loaded.initial_fen, loaded.moves_uci)
+        assert game2.turn == "white"  # White's turn after forced capture
+        # White should be forced to capture d5
+        assert game2.has_captures()
