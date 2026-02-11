@@ -33,6 +33,7 @@ from puzzle_progress import (
     save_puzzle_progress,
 )
 from bots import (
+    AdaptiveStockfishBot,
     BotBot,
     ChessBot,
     DIFFICULTY_PRESETS,
@@ -136,6 +137,10 @@ def main(page: ft.Page):
                 skill_level=_sf_skill,
                 think_time=_sf_time,
             )
+        # Adaptive Stockfish bot — strength mirrors the player's ELO
+        player_bots["stockfish_adaptive"] = AdaptiveStockfishBot(
+            elo_fn=lambda: elo_profile.rating,
+        )
 
     # ELO rating system
     elo_profile: EloProfile = load_elo_profile()
@@ -221,10 +226,15 @@ def main(page: ft.Page):
                 pass
 
         if elo_recommendation_text.current is not None:
-            rec_key = recommend_opponent(elo_profile.rating)
-            rec_name = get_bot_display_name(rec_key)
-            rec_elo = get_bot_elo(rec_key)
-            elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
+            if _stockfish_available:
+                elo_recommendation_text.current.value = (
+                    "Stockfish Adaptive (auto-match)"
+                )
+            else:
+                rec_key = recommend_opponent(elo_profile.rating)
+                rec_name = get_bot_display_name(rec_key)
+                rec_elo = get_bot_elo(rec_key, player_elo=elo_profile.rating)
+                elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
             try:
                 elo_recommendation_text.current.update()
             except RuntimeError:
@@ -1642,6 +1652,10 @@ def main(page: ft.Page):
     _stockfish_player_options = []
     if _stockfish_available:
         _stockfish_player_options = [
+            ft.DropdownOption(
+                key="stockfish_adaptive",
+                text="Stockfish Adaptive (matches your ELO)",
+            ),
             ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
             ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
             ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
@@ -1749,14 +1763,14 @@ def main(page: ft.Page):
                 game = Chess960Game()
                 # Configure Stockfish bots for Chess960
                 for bot in player_bots.values():
-                    if isinstance(bot, StockfishBot):
+                    if isinstance(bot, (StockfishBot, AdaptiveStockfishBot)):
                         bot.set_chess960(True)
             else:
                 game = ChessGame()
             # When leaving chess960, disable Chess960 mode on Stockfish bots
             if new_mode != "chess960":
                 for bot in player_bots.values():
-                    if isinstance(bot, StockfishBot):
+                    if isinstance(bot, (StockfishBot, AdaptiveStockfishBot)):
                         bot.set_chess960(False)
             selected = None
             valid_moves = []

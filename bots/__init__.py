@@ -8,18 +8,22 @@ from bots.minimax import MinimaxBot
 from bots.simple import SimpleBot
 from bots.stockfish import (
     DIFFICULTY_PRESETS,
+    AdaptiveStockfishBot,
     StockfishBot,
+    elo_to_stockfish_params,
     find_stockfish_path,
     is_stockfish_available,
 )
 
 __all__ = [
+    "AdaptiveStockfishBot",
     "BotBot",
     "ChessBot",
     "DIFFICULTY_PRESETS",
     "MinimaxBot",
     "SimpleBot",
     "StockfishBot",
+    "elo_to_stockfish_params",
     "find_stockfish_path",
     "is_stockfish_available",
 ]

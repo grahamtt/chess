@@ -21,6 +21,11 @@ DEFAULT_ELO_PATH = Path.home() / ".chess_elo.json"
 
 # Approximate ELO ratings for each bot.  These map to the *key* strings used
 # in ``main.py``'s ``player_bots`` dict.
+#
+# ``stockfish_adaptive`` is special: its ELO mirrors the player's current
+# rating (see :func:`get_adaptive_bot_elo`).  The sentinel value ``-1`` is
+# stored here so the key is recognised as a valid bot; callers should use
+# :func:`get_bot_elo` (which resolves the adaptive value dynamically).
 BOT_ELO: dict[str, int] = {
     "random": 600,
     "botbot": 900,
@@ -36,6 +41,7 @@ BOT_ELO: dict[str, int] = {
     "stockfish_6": 2200,
     "stockfish_7": 2500,
     "stockfish_8": 2800,
+    "stockfish_adaptive": -1,  # sentinel — resolved dynamically
 }
 
 # Default starting ELO for a new player
@@ -68,6 +74,7 @@ BOT_DISPLAY_NAMES: dict[str, str] = {
     "stockfish_6": "Stockfish 6",
     "stockfish_7": "Stockfish 7",
     "stockfish_8": "Stockfish 8",
+    "stockfish_adaptive": "Stockfish (Adaptive)",
 }
 
 
@@ -160,11 +167,17 @@ def recommend_opponent(player_elo: int) -> str:
     """Suggest the best bot opponent for a player with rating *player_elo*.
 
     Picks the bot whose ELO is closest to the player's, producing the most
-    competitive match-up.
+    competitive match-up.  The adaptive bot is always recommended first if
+    Stockfish is available (callers may fall back to the static recommendation
+    if it is not).
     """
-    best_key = BOT_LADDER[0]
+    # Filter the ladder to exclude the adaptive sentinel
+    ladder = [k for k in BOT_LADDER if k != "stockfish_adaptive"]
+    if not ladder:
+        return "stockfish_adaptive"  # pragma: no cover
+    best_key = ladder[0]
     best_diff = abs(player_elo - BOT_ELO[best_key])
-    for key in BOT_LADDER[1:]:
+    for key in ladder[1:]:
         diff = abs(player_elo - BOT_ELO[key])
         if diff < best_diff:
             best_diff = diff
@@ -185,9 +198,30 @@ def get_difficulty_label(player_elo: int) -> str:
     return "Expert"
 
 
-def get_bot_elo(bot_key: str) -> int | None:
-    """Return the ELO rating for a bot key, or None if unknown."""
-    return BOT_ELO.get(bot_key)
+def get_adaptive_bot_elo(player_elo: int) -> int:
+    """Return the effective ELO of the adaptive Stockfish bot.
+
+    Since the adaptive bot mirrors the player's strength, its rating equals
+    the player's current rating.
+    """
+    return player_elo
+
+
+def get_bot_elo(bot_key: str, *, player_elo: int | None = None) -> int | None:
+    """Return the ELO rating for a bot key, or None if unknown.
+
+    For ``"stockfish_adaptive"`` the *player_elo* must be supplied so the
+    adaptive bot's rating can be resolved.  If *player_elo* is ``None`` the
+    default player rating is used as a fallback.
+    """
+    raw = BOT_ELO.get(bot_key)
+    if raw is None:
+        return None
+    if bot_key == "stockfish_adaptive":
+        return get_adaptive_bot_elo(
+            player_elo if player_elo is not None else DEFAULT_RATING
+        )
+    return raw
 
 
 def get_bot_display_name(bot_key: str) -> str:
@@ -215,7 +249,12 @@ def record_game(
     Returns:
         The ``GameRecord`` for this game.
     """
-    opponent_elo = BOT_ELO.get(opponent_key, DEFAULT_RATING)
+    # For the adaptive bot, use the player's *current* rating as opponent ELO
+    # (the bot is deliberately playing at the player's level).
+    if opponent_key == "stockfish_adaptive":
+        opponent_elo = get_adaptive_bot_elo(profile.rating)
+    else:
+        opponent_elo = BOT_ELO.get(opponent_key, DEFAULT_RATING)
     rating_before = profile.rating
     new_rating = calculate_new_rating(
         profile.rating, opponent_elo, result, profile.games_played
