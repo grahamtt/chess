@@ -169,6 +169,8 @@ class TestRecommendOpponent:
     def test_exact_bot_elo(self):
         """Player exactly at a bot's ELO should recommend that bot."""
         for key, elo in BOT_ELO.items():
+            if key == "stockfish_adaptive":
+                continue  # adaptive bot is excluded from recommendations
             assert recommend_opponent(elo) == key
 
     def test_between_bots(self):

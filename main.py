@@ -3,6 +3,7 @@ Chess game using Flet with python-chess engine and SVG pieces.
 """
 
 import asyncio
+import random
 import time
 
 import chess
@@ -33,6 +34,7 @@ from puzzle_progress import (
     save_puzzle_progress,
 )
 from bots import (
+    AdaptiveStockfishBot,
     BotBot,
     ChessBot,
     DIFFICULTY_PRESETS,
@@ -136,6 +138,10 @@ def main(page: ft.Page):
                 skill_level=_sf_skill,
                 think_time=_sf_time,
             )
+        # Adaptive Stockfish bot — strength mirrors the player's ELO
+        player_bots["stockfish_adaptive"] = AdaptiveStockfishBot(
+            elo_fn=lambda: elo_profile.rating,
+        )
 
     # ELO rating system
     elo_profile: EloProfile = load_elo_profile()
@@ -221,10 +227,15 @@ def main(page: ft.Page):
                 pass
 
         if elo_recommendation_text.current is not None:
-            rec_key = recommend_opponent(elo_profile.rating)
-            rec_name = get_bot_display_name(rec_key)
-            rec_elo = get_bot_elo(rec_key)
-            elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
+            if _stockfish_available:
+                elo_recommendation_text.current.value = (
+                    "Stockfish Adaptive (auto-match)"
+                )
+            else:
+                rec_key = recommend_opponent(elo_profile.rating)
+                rec_name = get_bot_display_name(rec_key)
+                rec_elo = get_bot_elo(rec_key, player_elo=elo_profile.rating)
+                elo_recommendation_text.current.value = f"{rec_name} (~{rec_elo})"
             try:
                 elo_recommendation_text.current.update()
             except RuntimeError:
@@ -1237,7 +1248,8 @@ def main(page: ft.Page):
 
         When a puzzle is active the current puzzle is restarted instead of
         returning to a blank game.  In ranked mode, abandoning a game in
-        progress counts as a forfeit (loss).
+        progress counts as a forfeit (loss).  Ranked games randomly assign
+        the human to white or black.
         """
         nonlocal \
             game, \
@@ -1245,6 +1257,8 @@ def main(page: ft.Page):
             valid_moves, \
             hint_moves, \
             game_over, \
+            white_player, \
+            black_player, \
             white_remaining_secs, \
             black_remaining_secs, \
             move_start_time, \
@@ -1338,6 +1352,15 @@ def main(page: ft.Page):
             white_remaining_secs = float(time_control_secs)
             black_remaining_secs = float(time_control_secs)
         move_start_time = time.monotonic()
+
+        # Ranked games: randomly assign the human to white or black so the
+        # player cannot always choose their preferred colour.
+        if ranked:
+            _human_is_white = white_player == "human" and black_player != "human"
+            _human_is_black = black_player == "human" and white_player != "human"
+            if (_human_is_white or _human_is_black) and random.random() < 0.5:
+                white_player, black_player = black_player, white_player
+
         if game_mode == "antichess":
             message.current.value = "Antichess — White to move. Lose all your pieces!"
         elif game_mode == "chess960" and isinstance(game, Chess960Game):
@@ -1360,6 +1383,8 @@ def main(page: ft.Page):
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
+        elif not is_human_turn() and get_bot_for_turn() and not game_over:
+            page.run_task(bot_move_after_human)
 
     def do_undo(_):
         nonlocal \
@@ -1642,6 +1667,10 @@ def main(page: ft.Page):
     _stockfish_player_options = []
     if _stockfish_available:
         _stockfish_player_options = [
+            ft.DropdownOption(
+                key="stockfish_adaptive",
+                text="Stockfish Adaptive (matches your ELO)",
+            ),
             ft.DropdownOption(key="stockfish_1", text="Stockfish 1 (~1200)"),
             ft.DropdownOption(key="stockfish_2", text="Stockfish 2 (~1400)"),
             ft.DropdownOption(key="stockfish_3", text="Stockfish 3 (~1600)"),
@@ -1749,14 +1778,14 @@ def main(page: ft.Page):
                 game = Chess960Game()
                 # Configure Stockfish bots for Chess960
                 for bot in player_bots.values():
-                    if isinstance(bot, StockfishBot):
+                    if isinstance(bot, (StockfishBot, AdaptiveStockfishBot)):
                         bot.set_chess960(True)
             else:
                 game = ChessGame()
             # When leaving chess960, disable Chess960 mode on Stockfish bots
             if new_mode != "chess960":
                 for bot in player_bots.values():
-                    if isinstance(bot, StockfishBot):
+                    if isinstance(bot, (StockfishBot, AdaptiveStockfishBot)):
                         bot.set_chess960(False)
             selected = None
             valid_moves = []
@@ -1796,6 +1825,15 @@ def main(page: ft.Page):
             white_player = config_white_ref.current.value or "human"
         if config_black_ref.current is not None:
             black_player = config_black_ref.current.value or "human"
+
+        # Ranked games with a fresh board: randomly assign the human to white
+        # or black so the player cannot always pick their preferred colour.
+        if ranked and not game.can_undo():
+            _human_is_white = white_player == "human" and black_player != "human"
+            _human_is_black = black_player == "human" and white_player != "human"
+            if (_human_is_white or _human_is_black) and random.random() < 0.5:
+                white_player, black_player = black_player, white_player
+
         update_app_bar_title()
         update_status()
         update_clock_display()
@@ -1859,7 +1897,8 @@ def main(page: ft.Page):
                 ),
                 ft.Text(
                     "Ranked games count towards your ELO rating. "
-                    "Undo and hints are disabled during ranked play.",
+                    "Undo and hints are disabled, and your colour "
+                    "(white/black) is assigned randomly.",
                     size=11,
                     color=ft.Colors.ON_SURFACE_VARIANT,
                     italic=True,

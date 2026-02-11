@@ -4,6 +4,9 @@ Stockfish-powered bot using the UCI protocol via python-chess's engine module.
 Provides configurable difficulty through Stockfish's Skill Level (0–20) and
 thinking time limits.  Gracefully handles a missing Stockfish binary — callers
 can check :func:`is_stockfish_available` before instantiating.
+
+Includes :class:`AdaptiveStockfishBot` which dynamically matches its playing
+strength to the human player's ELO rating.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import logging
 import os
 import platform
 import shutil
-from typing import ClassVar
+from typing import Callable, ClassVar
 
 import chess
 import chess.engine
@@ -339,3 +342,179 @@ class StockfishBot:
                 cp = sc.relative.score(mate_score=100_000)
                 moves.append((move, cp))
         return moves
+
+
+# ---------------------------------------------------------------------------
+# ELO → Stockfish parameter mapping (used by AdaptiveStockfishBot)
+# ---------------------------------------------------------------------------
+
+# Piecewise-linear mapping: (player_elo, skill_level, think_time)
+# Interpolated between these anchor points to produce a smooth curve.
+_ELO_SKILL_ANCHORS: list[tuple[int, int, float]] = [
+    (400, 0, 0.05),
+    (600, 1, 0.05),
+    (800, 2, 0.08),
+    (1000, 3, 0.10),
+    (1200, 5, 0.15),
+    (1400, 8, 0.25),
+    (1600, 11, 0.40),
+    (1800, 14, 0.60),
+    (2000, 17, 0.80),
+    (2200, 19, 1.00),
+    (2500, 20, 1.50),
+]
+
+
+def elo_to_stockfish_params(player_elo: int) -> tuple[int, float]:
+    """Map a player ELO rating to ``(skill_level, think_time)`` for Stockfish.
+
+    Uses piecewise linear interpolation between anchor points defined in
+    :data:`_ELO_SKILL_ANCHORS`.  Values are clamped at the extremes.
+
+    Returns:
+        A ``(skill_level, think_time)`` tuple.
+    """
+    # Clamp to anchor range
+    if player_elo <= _ELO_SKILL_ANCHORS[0][0]:
+        return _ELO_SKILL_ANCHORS[0][1], _ELO_SKILL_ANCHORS[0][2]
+    if player_elo >= _ELO_SKILL_ANCHORS[-1][0]:
+        return _ELO_SKILL_ANCHORS[-1][1], _ELO_SKILL_ANCHORS[-1][2]
+
+    # Find the two surrounding anchors and interpolate
+    for i in range(len(_ELO_SKILL_ANCHORS) - 1):
+        elo_lo, skill_lo, time_lo = _ELO_SKILL_ANCHORS[i]
+        elo_hi, skill_hi, time_hi = _ELO_SKILL_ANCHORS[i + 1]
+        if elo_lo <= player_elo <= elo_hi:
+            t = (player_elo - elo_lo) / (elo_hi - elo_lo)
+            skill = round(skill_lo + t * (skill_hi - skill_lo))
+            think = time_lo + t * (time_hi - time_lo)
+            return max(0, min(20, skill)), round(max(0.01, think), 3)
+
+    # Fallback (should not be reached)
+    return _ELO_SKILL_ANCHORS[-1][1], _ELO_SKILL_ANCHORS[-1][2]  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# AdaptiveStockfishBot
+# ---------------------------------------------------------------------------
+
+
+class AdaptiveStockfishBot:
+    """Stockfish bot that dynamically matches its strength to the player's ELO.
+
+    Before each move the bot queries the player's current rating (via a
+    callback) and reconfigures the Stockfish engine to play at a corresponding
+    skill level.  This produces a continuously-adapting opponent that grows (or
+    shrinks) in difficulty as the player improves (or struggles).
+
+    Parameters
+    ----------
+    elo_fn:
+        A zero-argument callable that returns the player's current ELO rating
+        (``int``).  This is called before every move.
+    stockfish_path:
+        Explicit path to the Stockfish binary.  ``None`` ⇒ auto-detect.
+    threads:
+        Number of Stockfish search threads.
+    hash_mb:
+        Hash table size in MiB.
+    chess960:
+        Whether to enable Chess960 mode.
+    """
+
+    # Supported game modes (same as StockfishBot)
+    SUPPORTED_MODES: ClassVar[frozenset[str]] = frozenset({"standard", "chess960"})
+
+    def __init__(
+        self,
+        elo_fn: Callable[[], int],
+        stockfish_path: str | None = None,
+        threads: int = 1,
+        hash_mb: int = 16,
+        chess960: bool = False,
+    ) -> None:
+        self._elo_fn = elo_fn
+        self._stockfish_path = stockfish_path
+        self._threads = threads
+        self._hash_mb = hash_mb
+        self.chess960 = chess960
+
+        # Internal StockfishBot instance – replaced when the skill level changes
+        self._bot: StockfishBot | None = None
+        self._current_skill: int | None = None
+        self._current_think: float | None = None
+
+        self.name = "Stockfish (Adaptive)"
+
+    # -- Internal helpers --------------------------------------------------
+
+    def _sync_bot(self) -> StockfishBot | None:
+        """Ensure the inner :class:`StockfishBot` matches the player's ELO."""
+        player_elo = self._elo_fn()
+        skill, think = elo_to_stockfish_params(player_elo)
+
+        if (
+            self._bot is not None
+            and skill == self._current_skill
+            and think == self._current_think
+        ):
+            return self._bot  # No change needed
+
+        # Need to create or reconfigure the engine
+        if self._bot is not None:
+            self._bot.close()
+
+        self._bot = StockfishBot(
+            skill_level=skill,
+            think_time=think,
+            stockfish_path=self._stockfish_path,
+            threads=self._threads,
+            hash_mb=self._hash_mb,
+            chess960=self.chess960,
+        )
+        self._current_skill = skill
+        self._current_think = think
+        return self._bot
+
+    # -- ChessBot protocol -------------------------------------------------
+
+    def choose_move(self, board: chess.Board) -> chess.Move | None:
+        """Pick a move at a skill level matching the player's ELO."""
+        bot = self._sync_bot()
+        if bot is None:
+            return None
+        return bot.choose_move(board)
+
+    # -- Lifecycle ---------------------------------------------------------
+
+    def set_chess960(self, enabled: bool) -> None:
+        """Enable or disable Chess960 mode."""
+        if enabled != self.chess960:
+            self.chess960 = enabled
+            self.close()
+
+    @classmethod
+    def is_mode_supported(cls, game_mode: str) -> bool:
+        """Return True if the given game mode is supported."""
+        return game_mode in cls.SUPPORTED_MODES
+
+    def close(self) -> None:
+        """Shut down the underlying engine (if running)."""
+        if self._bot is not None:
+            self._bot.close()
+            self._bot = None
+            self._current_skill = None
+            self._current_think = None
+
+    def __del__(self) -> None:
+        self.close()
+
+    @property
+    def current_skill_level(self) -> int | None:
+        """The Stockfish Skill Level currently in use (or ``None``)."""
+        return self._current_skill
+
+    @property
+    def current_think_time(self) -> float | None:
+        """The think-time limit currently in use (or ``None``)."""
+        return self._current_think
