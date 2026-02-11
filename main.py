@@ -3,6 +3,7 @@ Chess game using Flet with python-chess engine and SVG pieces.
 """
 
 import asyncio
+import random
 import time
 
 import chess
@@ -1247,7 +1248,8 @@ def main(page: ft.Page):
 
         When a puzzle is active the current puzzle is restarted instead of
         returning to a blank game.  In ranked mode, abandoning a game in
-        progress counts as a forfeit (loss).
+        progress counts as a forfeit (loss).  Ranked games randomly assign
+        the human to white or black.
         """
         nonlocal \
             game, \
@@ -1255,6 +1257,8 @@ def main(page: ft.Page):
             valid_moves, \
             hint_moves, \
             game_over, \
+            white_player, \
+            black_player, \
             white_remaining_secs, \
             black_remaining_secs, \
             move_start_time, \
@@ -1348,6 +1352,15 @@ def main(page: ft.Page):
             white_remaining_secs = float(time_control_secs)
             black_remaining_secs = float(time_control_secs)
         move_start_time = time.monotonic()
+
+        # Ranked games: randomly assign the human to white or black so the
+        # player cannot always choose their preferred colour.
+        if ranked:
+            _human_is_white = white_player == "human" and black_player != "human"
+            _human_is_black = black_player == "human" and white_player != "human"
+            if (_human_is_white or _human_is_black) and random.random() < 0.5:
+                white_player, black_player = black_player, white_player
+
         if game_mode == "antichess":
             message.current.value = "Antichess — White to move. Lose all your pieces!"
         elif game_mode == "chess960" and isinstance(game, Chess960Game):
@@ -1370,6 +1383,8 @@ def main(page: ft.Page):
         page.update()
         if is_bot_vs_bot() and get_bot_for_turn() and not game_over:
             page.run_task(run_bot_vs_bot)
+        elif not is_human_turn() and get_bot_for_turn() and not game_over:
+            page.run_task(bot_move_after_human)
 
     def do_undo(_):
         nonlocal \
@@ -1810,6 +1825,15 @@ def main(page: ft.Page):
             white_player = config_white_ref.current.value or "human"
         if config_black_ref.current is not None:
             black_player = config_black_ref.current.value or "human"
+
+        # Ranked games with a fresh board: randomly assign the human to white
+        # or black so the player cannot always pick their preferred colour.
+        if ranked and not game.can_undo():
+            _human_is_white = white_player == "human" and black_player != "human"
+            _human_is_black = black_player == "human" and white_player != "human"
+            if (_human_is_white or _human_is_black) and random.random() < 0.5:
+                white_player, black_player = black_player, white_player
+
         update_app_bar_title()
         update_status()
         update_clock_display()
@@ -1873,7 +1897,8 @@ def main(page: ft.Page):
                 ),
                 ft.Text(
                     "Ranked games count towards your ELO rating. "
-                    "Undo and hints are disabled during ranked play.",
+                    "Undo and hints are disabled, and your colour "
+                    "(white/black) is assigned randomly.",
                     size=11,
                     color=ft.Colors.ON_SURFACE_VARIANT,
                     italic=True,
