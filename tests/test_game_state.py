@@ -150,6 +150,7 @@ class TestGameState:
         assert gs.time_control_secs is None
         assert gs.clock_enabled is False
         assert gs.clock_started is False
+        assert gs.ranked is False
 
     def test_custom_values(self):
         gs = GameState(
@@ -162,6 +163,14 @@ class TestGameState:
         assert gs.black_player == "random"
         assert gs.time_control_secs is None
         assert gs.clock_enabled is False
+
+    def test_ranked_default_false(self):
+        gs = GameState()
+        assert gs.ranked is False
+
+    def test_ranked_set_true(self):
+        gs = GameState(ranked=True)
+        assert gs.ranked is True
 
 
 # ---------------------------------------------------------------------------
@@ -416,3 +425,53 @@ class TestIntegration:
         assert loaded is not None
         assert loaded.game_mode == "standard"
         assert loaded.chess960_position is None
+
+    def test_ranked_roundtrip(self, tmp_path):
+        """Ranked flag is saved and restored correctly."""
+        path = tmp_path / "save.json"
+        state = GameState(
+            white_player="human",
+            black_player="minimax_2",
+            ranked=True,
+        )
+        save_game_state(state, path)
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.ranked is True
+
+    def test_ranked_default_false_roundtrip(self, tmp_path):
+        """Ranked defaults to False and roundtrips correctly."""
+        path = tmp_path / "save.json"
+        state = GameState()
+        save_game_state(state, path)
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.ranked is False
+
+    def test_ranked_with_full_game_state(self, tmp_path):
+        """Ranked flag persists alongside other state in a full game save."""
+        path = tmp_path / "save.json"
+        game = ChessGame()
+        game.make_move(6, 4, 4, 4)  # e4
+        game.make_move(1, 4, 3, 4)  # e5
+
+        state = GameState(
+            initial_fen=game.get_initial_fen(),
+            moves_uci=game.get_moves_uci(),
+            white_player="human",
+            black_player="stockfish_3",
+            time_control_secs=300,
+            white_remaining_secs=280.0,
+            black_remaining_secs=295.0,
+            clock_enabled=True,
+            clock_started=True,
+            ranked=True,
+        )
+        save_game_state(state, path)
+
+        loaded = load_game_state(path)
+        assert loaded is not None
+        assert loaded.ranked is True
+        assert loaded.moves_uci == ["e2e4", "e7e5"]
+        assert loaded.white_player == "human"
+        assert loaded.black_player == "stockfish_3"

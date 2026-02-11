@@ -9,6 +9,7 @@ from elo import (
     BOT_ELO,
     BOT_LADDER,
     DEFAULT_RATING,
+    RANKED_RESTRICTIONS,
     EloProfile,
     GameRecord,
     calculate_new_rating,
@@ -18,8 +19,10 @@ from elo import (
     get_difficulty_label,
     get_recent_form,
     get_win_rate,
+    is_game_ratable,
     k_factor,
     load_elo_profile,
+    ranked_action_blocked,
     recommend_opponent,
     record_game,
     reset_elo_profile,
@@ -491,3 +494,57 @@ class TestWinRate:
         record_game(p, "random", 1.0)
         record_game(p, "random", 0.0)
         assert get_win_rate(p) == pytest.approx(50.0)
+
+
+# ---------------------------------------------------------------------------
+# Ranked play helpers
+# ---------------------------------------------------------------------------
+
+
+class TestIsGameRatable:
+    def test_human_vs_known_bot(self):
+        """Human vs known bot is ratable."""
+        assert is_game_ratable("human", "random") is True
+        assert is_game_ratable("human", "minimax_2") is True
+        assert is_game_ratable("minimax_1", "human") is True
+        assert is_game_ratable("stockfish_4", "human") is True
+
+    def test_human_vs_human(self):
+        """Human vs human is not ratable."""
+        assert is_game_ratable("human", "human") is False
+
+    def test_bot_vs_bot(self):
+        """Bot vs bot is not ratable."""
+        assert is_game_ratable("random", "minimax_1") is False
+
+    def test_puzzle_never_ratable(self):
+        """Puzzles are never ratable."""
+        assert is_game_ratable("human", "random", is_puzzle=True) is False
+
+    def test_unknown_bot_not_ratable(self):
+        """Human vs an unknown bot key is not ratable."""
+        assert is_game_ratable("human", "unknown_bot_xyz") is False
+
+    def test_all_game_modes(self):
+        """All standard game modes are eligible for rated play."""
+        for mode in ("standard", "chess960", "antichess"):
+            assert is_game_ratable("human", "random", game_mode=mode) is True
+
+
+class TestRankedActionBlocked:
+    def test_known_actions_return_reason(self):
+        """Known restricted actions return a non-empty reason string."""
+        for action in ("undo", "hint", "change_players", "change_ranked", "set_fen"):
+            reason = ranked_action_blocked(action)
+            assert reason is not None
+            assert isinstance(reason, str)
+            assert len(reason) > 0
+
+    def test_unknown_action_returns_none(self):
+        """Unknown actions are not blocked (return None)."""
+        assert ranked_action_blocked("some_allowed_action") is None
+
+    def test_restrictions_dict_has_expected_keys(self):
+        """RANKED_RESTRICTIONS should contain the documented restriction keys."""
+        expected = {"undo", "hint", "change_players", "change_ranked", "set_fen"}
+        assert expected == set(RANKED_RESTRICTIONS.keys())

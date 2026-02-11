@@ -50,6 +50,7 @@ from elo import (
     get_recent_form,
     get_win_rate,
     load_elo_profile,
+    ranked_action_blocked,
     recommend_opponent,
     record_game,
     save_elo_profile,
@@ -92,6 +93,7 @@ def main(page: ft.Page):
     opening_desc_text = ft.Ref[ft.Text]()
     common_moves_column = ft.Ref[ft.Column]()
     app_bar_title_ref = ft.Ref[ft.Text]()
+    ranked_badge_ref = ft.Ref[ft.Container]()
 
     # Refs for side-panel sections (toggled visible/hidden during puzzles/TV)
     history_panel_ref = ft.Ref[ft.Container]()
@@ -108,6 +110,10 @@ def main(page: ft.Page):
     clock_started = (
         False  # True only after white's first move (clock does not run until then)
     )
+
+    # Ranked play: when True, the game counts towards the player's ELO.
+    # Undo, hints, and mid-game config changes are forbidden in ranked games.
+    ranked = False
 
     # Per-player: "human" | "random" | "botbot" | "minimax_1" | ...
     white_player = "human"
@@ -164,6 +170,16 @@ def main(page: ft.Page):
                 app_bar_title_ref.current.update()
             except RuntimeError:
                 pass
+        update_ranked_badge()
+
+    def update_ranked_badge():
+        """Show or hide the ranked badge next to the title."""
+        if ranked_badge_ref.current is not None:
+            ranked_badge_ref.current.visible = ranked
+            try:
+                ranked_badge_ref.current.update()
+            except RuntimeError:
+                pass
 
     def update_elo_display():
         """Refresh all ELO-related UI elements."""
@@ -215,9 +231,9 @@ def main(page: ft.Page):
                 pass
 
     def handle_game_over_elo(result_for_white: float | None):
-        """Update ELO after a game ends (human vs bot only).
+        """Update ELO after a game ends (human vs bot only, ranked games only).
 
-        Puzzles never affect the player's ELO rating.
+        Puzzles and unranked games never affect the player's ELO rating.
 
         Args:
             result_for_white: 1.0 if white won, 0.0 if black won, 0.5 if draw,
@@ -228,6 +244,9 @@ def main(page: ft.Page):
             return
         # Puzzles never affect ELO
         if active_puzzle is not None:
+            return
+        # Only ranked games affect ELO
+        if not ranked:
             return
 
         # Determine which side the human is playing and which bot they face
@@ -313,6 +332,7 @@ def main(page: ft.Page):
             black_remaining_secs=black_remaining_secs,
             clock_enabled=clock_enabled,
             clock_started=clock_started,
+            ranked=ranked,
         )
         save_game_state(state)
 
@@ -1192,11 +1212,32 @@ def main(page: ft.Page):
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
     )
 
+    def handle_forfeit_elo():
+        """Record a loss if a ranked game in progress is abandoned (forfeit).
+
+        Called before resetting the board when the player starts a new game
+        or otherwise leaves a ranked game that hasn't finished naturally.
+        """
+        if not ranked:
+            return
+        if elo_updated_this_game:
+            return
+        if active_puzzle is not None:
+            return
+        if not _is_game_in_progress():
+            return
+        # Treat forfeit as a loss for the human player
+        if white_player == "human" and black_player != "human":
+            handle_game_over_elo(0.0)  # white (human) loses
+        elif black_player == "human" and white_player != "human":
+            handle_game_over_elo(1.0)  # white (bot) wins → human loses
+
     def do_new_game(_):
         """Reset the game (called after confirmation).
 
         When a puzzle is active the current puzzle is restarted instead of
-        returning to a blank game.
+        returning to a blank game.  In ranked mode, abandoning a game in
+        progress counts as a forfeit (loss).
         """
         nonlocal \
             game, \
@@ -1218,6 +1259,9 @@ def main(page: ft.Page):
         # Stop TV stream if active
         if tv_watching:
             _stop_tv_stream()
+
+        # In ranked mode, abandoning a game in progress counts as a forfeit
+        handle_forfeit_elo()
 
         # If a puzzle is active, restart it instead of resetting to a new game
         current_puzzle = active_puzzle
@@ -1328,6 +1372,9 @@ def main(page: ft.Page):
             active_puzzle, \
             puzzle_move_index, \
             puzzle_moves_made
+        # Block undo in ranked games
+        if ranked and not game_over:
+            return
         if not game.undo():
             return
         selected = None
@@ -1547,7 +1594,13 @@ def main(page: ft.Page):
     def update_undo_button():
         if undo_btn.current is None:
             return
-        undo_btn.current.disabled = not game.can_undo()
+        # Disable undo in ranked games (unless the game is already over)
+        if ranked and not game_over:
+            undo_btn.current.disabled = True
+            undo_btn.current.tooltip = ranked_action_blocked("undo")
+        else:
+            undo_btn.current.disabled = not game.can_undo()
+            undo_btn.current.tooltip = "Undo move"
         if undo_btn.current.page is not None:
             undo_btn.current.update()
             page.update(undo_btn.current)
@@ -1632,10 +1685,23 @@ def main(page: ft.Page):
         ft.DropdownOption(key="600", text="10 min"),
     ]
 
+    def _is_game_in_progress() -> bool:
+        """Return True if a game has moves on the board (i.e. is in progress)."""
+        return game.can_undo() and not game_over
+
+    def _can_change_ranked() -> bool:
+        """Return True if the ranked toggle may be changed.
+
+        The ranked setting can only be changed before the game starts (no moves
+        made) or after the game is over.  Switching mid-game is forbidden.
+        """
+        return not _is_game_in_progress()
+
     config_time_ref = ft.Ref[ft.Dropdown]()
     config_white_ref = ft.Ref[ft.Dropdown]()
     config_black_ref = ft.Ref[ft.Dropdown]()
     config_game_mode_ref = ft.Ref[ft.Dropdown]()
+    config_ranked_ref = ft.Ref[ft.Switch]()
 
     game_mode_options = [
         ft.DropdownOption(key="standard", text="Standard"),
@@ -1660,8 +1726,15 @@ def main(page: ft.Page):
             valid_moves, \
             hint_moves, \
             game_over, \
-            elo_updated_this_game
+            elo_updated_this_game, \
+            ranked
         page.pop_dialog()
+
+        # Apply ranked toggle (only allowed when a game hasn't started yet)
+        if config_ranked_ref.current is not None:
+            new_ranked = config_ranked_ref.current.value
+            if _can_change_ranked():
+                ranked = new_ranked
 
         # Handle game mode change — requires a full reset
         new_mode = "standard"
@@ -1727,6 +1800,7 @@ def main(page: ft.Page):
         update_status()
         update_clock_display()
         update_evaluation_bar()
+        update_undo_button()
         save_current_state()
         refresh_board()
         page.update()
@@ -1772,6 +1846,24 @@ def main(page: ft.Page):
                     width=200,
                     options=player_options,
                 ),
+                ft.Divider(height=1),
+                ft.Row(
+                    [
+                        ft.Text("Ranked game", size=14, weight=ft.FontWeight.W_500),
+                        ft.Switch(
+                            ref=config_ranked_ref,
+                            value=ranked,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                ft.Text(
+                    "Ranked games count towards your ELO rating. "
+                    "Undo and hints are disabled during ranked play.",
+                    size=11,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                    italic=True,
+                ),
             ],
             tight=True,
             spacing=8,
@@ -1796,14 +1888,23 @@ def main(page: ft.Page):
             config_time_ref.current.update()
         # Update player options based on current game mode
         current_options = _get_player_options_for_mode(game_mode)
+        in_progress = _is_game_in_progress()
         if config_white_ref.current is not None:
             config_white_ref.current.options = current_options
             config_white_ref.current.value = white_player
+            # Lock player selection during a ranked game in progress
+            config_white_ref.current.disabled = ranked and in_progress
             config_white_ref.current.update()
         if config_black_ref.current is not None:
             config_black_ref.current.options = current_options
             config_black_ref.current.value = black_player
+            config_black_ref.current.disabled = ranked and in_progress
             config_black_ref.current.update()
+        # Sync ranked switch and disable it if a game is in progress
+        if config_ranked_ref.current is not None:
+            config_ranked_ref.current.value = ranked
+            config_ranked_ref.current.disabled = not _can_change_ranked()
+            config_ranked_ref.current.update()
         page.update()
 
     undo_btn = ft.Ref[ft.IconButton]()
@@ -1817,8 +1918,15 @@ def main(page: ft.Page):
             confirm_label = "Restart"
         else:
             title = "New game"
-            content = "Start a new game? The current game will be lost."
-            confirm_label = "New game"
+            if ranked and _is_game_in_progress():
+                content = (
+                    "Forfeit this ranked game? "
+                    "This will count as a loss and your ELO rating will decrease."
+                )
+                confirm_label = "Forfeit"
+            else:
+                content = "Start a new game? The current game will be lost."
+                confirm_label = "New game"
         dialog = ft.AlertDialog(
             title=ft.Text(title),
             content=ft.Text(content),
@@ -2821,6 +2929,14 @@ def main(page: ft.Page):
         nonlocal hint_moves
         if game_over or not is_human_turn():
             return
+        # Block hints in ranked games
+        if ranked:
+            reason = ranked_action_blocked("hint")
+            if reason:
+                message.current.value = reason
+                message.current.color = ft.Colors.ORANGE
+                page.update()
+            return
 
         # Get hint moves from the game
         hint_data = game.get_hint_moves(depth=3, top_n=3)
@@ -3058,12 +3174,31 @@ def main(page: ft.Page):
     )
 
     app_bar = ft.AppBar(
-        title=ft.Text(
-            ref=app_bar_title_ref,
-            value="Chess960"
-            if game_mode == "chess960"
-            else ("Antichess" if game_mode == "antichess" else "Chess"),
-            weight=ft.FontWeight.BOLD,
+        title=ft.Row(
+            [
+                ft.Text(
+                    ref=app_bar_title_ref,
+                    value="Chess960"
+                    if game_mode == "chess960"
+                    else ("Antichess" if game_mode == "antichess" else "Chess"),
+                    weight=ft.FontWeight.BOLD,
+                ),
+                ft.Container(
+                    ref=ranked_badge_ref,
+                    content=ft.Text(
+                        "RANKED",
+                        size=10,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.WHITE,
+                    ),
+                    bgcolor=ft.Colors.DEEP_PURPLE,
+                    border_radius=4,
+                    padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                    visible=ranked,
+                ),
+            ],
+            spacing=8,
+            alignment=ft.MainAxisAlignment.CENTER,
         ),
         center_title=True,
         bgcolor=ft.Colors.SURFACE,
@@ -3133,6 +3268,7 @@ def main(page: ft.Page):
             black_remaining_secs = _saved.black_remaining_secs
             clock_enabled = _saved.clock_enabled
             clock_started = _saved.clock_started
+            ranked = _saved.ranked
             move_start_time = time.monotonic()
             if game_mode == "antichess" and isinstance(game, AntiChessGame):
                 game_over = game.is_antichess_game_over()

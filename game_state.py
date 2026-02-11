@@ -43,6 +43,9 @@ class GameState:
     clock_enabled: bool = False
     clock_started: bool = False
 
+    # Ranked play: when True the game counts towards the player's ELO rating
+    ranked: bool = False
+
 
 def save_game_state(state: GameState, path: str | Path | None = None) -> bool:
     """Write *state* to disk as JSON.  Returns True on success."""

@@ -310,3 +310,50 @@ def get_win_rate(profile: EloProfile) -> float | None:
     if profile.games_played == 0:
         return None
     return (profile.wins / profile.games_played) * 100.0
+
+
+# ---------------------------------------------------------------------------
+# Ranked play helpers
+# ---------------------------------------------------------------------------
+
+# Actions that are forbidden while a ranked game is in progress.
+# Used by the UI to disable controls and show explanatory tooltips.
+RANKED_RESTRICTIONS: dict[str, str] = {
+    "undo": "Undo is disabled in ranked games.",
+    "hint": "Hints are disabled in ranked games.",
+    "change_players": "Player configuration is locked during a ranked game.",
+    "change_ranked": "Cannot switch to unranked while a ranked game is in progress.",
+    "set_fen": "Loading a FEN position is disabled during ranked games.",
+}
+
+
+def is_game_ratable(
+    white_player: str,
+    black_player: str,
+    *,
+    is_puzzle: bool = False,
+    game_mode: str = "standard",
+) -> bool:
+    """Return True if the current game configuration is eligible for ranked play.
+
+    A game is ratable when:
+    - Exactly one side is ``"human"`` and the other is a known bot.
+    - It is **not** a puzzle.
+
+    All game modes (standard, chess960, antichess) are eligible.
+    """
+    if is_puzzle:
+        return False
+    human_side = (white_player == "human") + (black_player == "human")
+    if human_side != 1:
+        return False  # human-vs-human or bot-vs-bot
+    bot_key = black_player if white_player == "human" else white_player
+    return bot_key in BOT_ELO
+
+
+def ranked_action_blocked(action: str) -> str | None:
+    """Return a user-facing reason string if *action* is blocked in ranked mode.
+
+    Returns ``None`` if the action is allowed.
+    """
+    return RANKED_RESTRICTIONS.get(action)
