@@ -5,6 +5,7 @@ Chess bots: pluggable API and built-in implementations.
 from bots.base import ChessBot
 from bots.botbot import BotBot
 from bots.minimax import MinimaxBot
+from bots.mobility import PieceMobilityBot
 from bots.simple import SimpleBot
 from bots.stockfish import (
     DIFFICULTY_PRESETS,
@@ -21,6 +22,7 @@ __all__ = [
     "ChessBot",
     "DIFFICULTY_PRESETS",
     "MinimaxBot",
+    "PieceMobilityBot",
     "SimpleBot",
     "StockfishBot",
     "elo_to_stockfish_params",

@@ -39,6 +39,7 @@ from bots import (
     ChessBot,
     DIFFICULTY_PRESETS,
     MinimaxBot,
+    PieceMobilityBot,
     SimpleBot,
     StockfishBot,
     is_stockfish_available,
@@ -129,6 +130,8 @@ def main(page: ft.Page):
         "minimax_2": MinimaxBot(depth=2, randomness=0.3),
         "minimax_3": MinimaxBot(depth=3, randomness=0.3),
         "minimax_4": MinimaxBot(depth=4, randomness=0.3),
+        "mobility_2": PieceMobilityBot(depth=2, randomness=0.3),
+        "mobility_3": PieceMobilityBot(depth=3, randomness=0.3),
     }
 
     # Register Stockfish bots (only if the binary is found on this system)
@@ -851,29 +854,30 @@ def main(page: ft.Page):
 
         # Set animation state, refresh board (hides piece at destination), add overlay
         animating_move = (from_row, from_col, to_row, to_col)
-        refresh_board()
-        board_stack.controls.append(anim_piece)
-        page.update()
-
-        # Let initial position render
-        await asyncio.sleep(0.02)
-
-        # Animate to destination
-        anim_piece.left = to_x
-        anim_piece.top = to_y
         try:
-            anim_piece.update()
-        except Exception:
-            pass
+            refresh_board()
+            board_stack.controls.append(anim_piece)
+            page.update()
 
-        # Wait for animation to complete
-        await asyncio.sleep(0.18)
+            # Let initial position render
+            await asyncio.sleep(0.02)
 
-        # Clean up
-        animating_move = None
-        if anim_piece in board_stack.controls:
-            board_stack.controls.remove(anim_piece)
-        refresh_board()
+            # Animate to destination
+            anim_piece.left = to_x
+            anim_piece.top = to_y
+            try:
+                anim_piece.update()
+            except Exception:
+                pass
+
+            # Wait for animation to complete
+            await asyncio.sleep(0.18)
+        finally:
+            # Always clean up animation state so the board never gets stuck
+            animating_move = None
+            if anim_piece in board_stack.controls:
+                board_stack.controls.remove(anim_piece)
+            refresh_board()
 
     async def _animate_then_post_move(from_row, from_col, to_row, to_col, piece_info):
         """Animate the piece move, then run post-move logic."""
@@ -968,8 +972,11 @@ def main(page: ft.Page):
         bot = get_bot_for_turn()
         if not bot or game_over:
             return
-        move = bot.choose_move(game.get_board())
-        if move is None:
+        # Run the (potentially slow) bot computation in a thread so the
+        # Flet event-loop stays responsive and the UI keeps rendering.
+        board_copy = game.get_board()
+        move = await asyncio.to_thread(bot.choose_move, board_copy)
+        if move is None or game_over:
             return
 
         # Get piece info before applying the move (for animation)
@@ -1683,6 +1690,8 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_2", text="Minimax 2"),
         ft.DropdownOption(key="minimax_3", text="Minimax 3"),
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
+        ft.DropdownOption(key="mobility_2", text="Piece Mobility 2"),
+        ft.DropdownOption(key="mobility_3", text="Piece Mobility 3"),
     ]
     _stockfish_player_options = []
     if _stockfish_available:
