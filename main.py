@@ -39,6 +39,7 @@ from bots import (
     ChessBot,
     DIFFICULTY_PRESETS,
     MinimaxBot,
+    PieceMobilityBot,
     SimpleBot,
     StockfishBot,
     is_stockfish_available,
@@ -128,6 +129,8 @@ def main(page: ft.Page):
         "minimax_2": MinimaxBot(depth=2, randomness=0.3),
         "minimax_3": MinimaxBot(depth=3, randomness=0.3),
         "minimax_4": MinimaxBot(depth=4, randomness=0.3),
+        "mobility_2": PieceMobilityBot(depth=2, randomness=0.3),
+        "mobility_3": PieceMobilityBot(depth=3, randomness=0.3),
     }
 
     # Register Stockfish bots (only if the binary is found on this system)
@@ -1668,6 +1671,8 @@ def main(page: ft.Page):
         ft.DropdownOption(key="minimax_2", text="Minimax 2"),
         ft.DropdownOption(key="minimax_3", text="Minimax 3"),
         ft.DropdownOption(key="minimax_4", text="Minimax 4"),
+        ft.DropdownOption(key="mobility_2", text="Piece Mobility 2"),
+        ft.DropdownOption(key="mobility_3", text="Piece Mobility 3"),
     ]
     _stockfish_player_options = []
     if _stockfish_available:
