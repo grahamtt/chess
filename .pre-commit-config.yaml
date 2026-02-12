@@ -30,3 +30,11 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [commit]
+
+      - id: ratchet-coverage
+        name: ratchet coverage threshold
+        entry: uv run python scripts/ratchet_coverage.py && git add pyproject.toml
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
