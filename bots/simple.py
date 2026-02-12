@@ -81,10 +81,17 @@ class SimpleBot:
         score += 0.1
         return score
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
         legal = list(board.legal_moves)
         if not legal:
             return None
+
+        # SimpleBot is already very fast; remaining_time is accepted for
+        # protocol compatibility but does not change behaviour.
 
         # Use antichess scoring when playing on an antichess board
         if isinstance(board, chess.variant.AntichessBoard):

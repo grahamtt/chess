@@ -960,6 +960,17 @@ def main(page: ft.Page):
         await asyncio.sleep(0.05)
         await play_bot_turn_async()
 
+    def _bot_remaining_time() -> float | None:
+        """Return remaining seconds for the side whose turn it is, or None if no clock."""
+        if not clock_enabled or not clock_started:
+            return None
+        import time as _t
+
+        now = _t.monotonic()
+        if game.turn == "white":
+            return max(0.0, white_remaining_secs - (now - move_start_time))
+        return max(0.0, black_remaining_secs - (now - move_start_time))
+
     async def play_bot_turn_async():
         """Get one move from bot, apply it with animation, and refresh UI."""
         nonlocal selected, valid_moves, hint_moves, game_over
@@ -968,7 +979,7 @@ def main(page: ft.Page):
         bot = get_bot_for_turn()
         if not bot or game_over:
             return
-        move = bot.choose_move(game.get_board())
+        move = bot.choose_move(game.get_board(), remaining_time=_bot_remaining_time())
         if move is None:
             return
 
