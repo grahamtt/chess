@@ -38,6 +38,7 @@ class GameState:
 
     # Clock / time control
     time_control_secs: int | None = None  # None means unlimited (default)
+    increment_secs: float = 0.0  # Seconds added per move (progressive / increment)
     white_remaining_secs: float = 0.0
     black_remaining_secs: float = 0.0
     clock_enabled: bool = False
