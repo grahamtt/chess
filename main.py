@@ -395,13 +395,18 @@ def main(page: ft.Page):
                 except RuntimeError:
                     pass
             return
-        now = time.monotonic()
-        if game.turn == "white":
-            white_effective = white_remaining_secs - (now - move_start_time)
+        # When the game is over, show frozen remaining times (no countdown)
+        if game_over:
+            white_effective = white_remaining_secs
             black_effective = black_remaining_secs
         else:
-            white_effective = white_remaining_secs
-            black_effective = black_remaining_secs - (now - move_start_time)
+            now = time.monotonic()
+            if game.turn == "white":
+                white_effective = white_remaining_secs - (now - move_start_time)
+                black_effective = black_remaining_secs
+            else:
+                white_effective = white_remaining_secs
+                black_effective = black_remaining_secs - (now - move_start_time)
         if white_clock_text.current is not None:
             white_clock_text.current.value = format_clock(white_effective)
             white_clock_text.current.weight = (
