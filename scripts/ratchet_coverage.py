@@ -22,6 +22,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COVERAGE_XML = REPO_ROOT / "coverage.xml"
 PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 
+# Small buffer subtracted from actual coverage before ratcheting.
+# Accounts for minor cross-environment differences (e.g. macOS vs Linux CI)
+# where branch evaluation or platform-specific code paths cause the measured
+# coverage to vary by a fraction of a percent.
+MARGIN = 0.15
+
 # Matches  fail_under = <number>  (int or float)
 FAIL_UNDER_RE = re.compile(r"(fail_under\s*=\s*)([\d.]+)")
 
@@ -82,7 +88,7 @@ def main() -> int:
 
     current_threshold = float(match.group(2))
     precision = get_precision(text)
-    actual = floor_to_precision(get_actual_coverage(), precision)
+    actual = floor_to_precision(get_actual_coverage() - MARGIN, precision)
 
     if actual <= current_threshold:
         print(
