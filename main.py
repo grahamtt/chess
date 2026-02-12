@@ -625,7 +625,7 @@ def main(page: ft.Page):
             width=square_size,
             height=square_size,
             bgcolor=bg,
-            border=ft.border.all(0, "transparent"),
+            border=ft.Border.all(0, "transparent"),
         )
 
         def on_tap(e):
@@ -674,14 +674,14 @@ def main(page: ft.Page):
 
         def on_will_accept(e):
             if e.data == "true":
-                square_container.border = ft.border.all(2, ft.Colors.YELLOW_400)
+                square_container.border = ft.Border.all(2, ft.Colors.YELLOW_400)
                 try:
                     square_container.update()
                 except Exception:
                     pass
 
         def on_leave(e):
-            square_container.border = ft.border.all(0, "transparent")
+            square_container.border = ft.Border.all(0, "transparent")
             try:
                 square_container.update()
             except Exception:
@@ -1234,7 +1234,7 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        padding=ft.padding.symmetric(12, 16),
+        padding=ft.Padding.symmetric(12, 16),
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
     )
 
@@ -1615,7 +1615,7 @@ def main(page: ft.Page):
                         width=white_width,
                         height=20,
                         bgcolor=ft.Colors.WHITE,
-                        border=ft.border.only(
+                        border=ft.Border.only(
                             right=ft.BorderSide(1, ft.Colors.OUTLINE)
                             if black_width > 0
                             else None
@@ -2508,7 +2508,7 @@ def main(page: ft.Page):
                         size=13,
                         color=ft.Colors.ON_SURFACE_VARIANT,
                     ),
-                    padding=ft.padding.only(bottom=8),
+                    padding=ft.Padding.only(bottom=8),
                 ),
                 ft.Divider(height=1),
                 ft.Container(
@@ -2783,7 +2783,7 @@ def main(page: ft.Page):
                 spacing=2,
                 tight=True,
             ),
-            padding=ft.padding.only(bottom=8),
+            padding=ft.Padding.only(bottom=8),
         )
 
         # Lichess Daily Puzzle button at the top
@@ -3066,7 +3066,7 @@ def main(page: ft.Page):
         ),
         width=200,
         height=20,
-        border=ft.border.all(1, ft.Colors.OUTLINE),
+        border=ft.Border.all(1, ft.Colors.OUTLINE),
     )
 
     history_panel = ft.Container(
@@ -3244,9 +3244,9 @@ def main(page: ft.Page):
             tight=True,
         ),
         width=220,
-        padding=ft.padding.all(12),
+        padding=ft.Padding.all(12),
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-        border=ft.border.only(left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+        border=ft.Border.only(left=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
 
     app_bar = ft.AppBar(
@@ -3269,7 +3269,7 @@ def main(page: ft.Page):
                     ),
                     bgcolor=ft.Colors.DEEP_PURPLE,
                     border_radius=4,
-                    padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                     visible=ranked,
                 ),
             ],
