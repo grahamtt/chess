@@ -839,29 +839,30 @@ def main(page: ft.Page):
 
         # Set animation state, refresh board (hides piece at destination), add overlay
         animating_move = (from_row, from_col, to_row, to_col)
-        refresh_board()
-        board_stack.controls.append(anim_piece)
-        page.update()
-
-        # Let initial position render
-        await asyncio.sleep(0.02)
-
-        # Animate to destination
-        anim_piece.left = to_x
-        anim_piece.top = to_y
         try:
-            anim_piece.update()
-        except Exception:
-            pass
+            refresh_board()
+            board_stack.controls.append(anim_piece)
+            page.update()
 
-        # Wait for animation to complete
-        await asyncio.sleep(0.18)
+            # Let initial position render
+            await asyncio.sleep(0.02)
 
-        # Clean up
-        animating_move = None
-        if anim_piece in board_stack.controls:
-            board_stack.controls.remove(anim_piece)
-        refresh_board()
+            # Animate to destination
+            anim_piece.left = to_x
+            anim_piece.top = to_y
+            try:
+                anim_piece.update()
+            except Exception:
+                pass
+
+            # Wait for animation to complete
+            await asyncio.sleep(0.18)
+        finally:
+            # Always clean up animation state so the board never gets stuck
+            animating_move = None
+            if anim_piece in board_stack.controls:
+                board_stack.controls.remove(anim_piece)
+            refresh_board()
 
     async def _animate_then_post_move(from_row, from_col, to_row, to_col, piece_info):
         """Animate the piece move, then run post-move logic."""
@@ -956,8 +957,11 @@ def main(page: ft.Page):
         bot = get_bot_for_turn()
         if not bot or game_over:
             return
-        move = bot.choose_move(game.get_board())
-        if move is None:
+        # Run the (potentially slow) bot computation in a thread so the
+        # Flet event-loop stays responsive and the UI keeps rendering.
+        board_copy = game.get_board()
+        move = await asyncio.to_thread(bot.choose_move, board_copy)
+        if move is None or game_over:
             return
 
         # Get piece info before applying the move (for animation)
