@@ -20,6 +20,8 @@ from typing import Callable, ClassVar
 import chess
 import chess.engine
 
+from bots.base import compute_move_time_budget
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -230,8 +232,16 @@ class StockfishBot:
 
     # -- ChessBot protocol -------------------------------------------------
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
         """Pick the best move using Stockfish.
+
+        When *remaining_time* is provided the engine's per-move thinking time
+        is capped so it never spends more than a safe fraction of the
+        remaining clock.
 
         Returns ``None`` if the engine is unavailable or no legal moves exist.
         """
@@ -242,10 +252,17 @@ class StockfishBot:
         if engine is None:
             return None
 
+        # Derive an effective think-time from the remaining clock
+        effective_think = compute_move_time_budget(
+            remaining_time, base_think_time=self.think_time
+        )
+        if effective_think is None:
+            effective_think = self.think_time
+
         try:
             result = engine.play(
                 board,
-                chess.engine.Limit(time=self.think_time),
+                chess.engine.Limit(time=effective_think),
             )
             return result.move
         except (chess.engine.EngineTerminatedError, chess.engine.EngineError) as exc:
@@ -478,12 +495,20 @@ class AdaptiveStockfishBot:
 
     # -- ChessBot protocol -------------------------------------------------
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
-        """Pick a move at a skill level matching the player's ELO."""
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
+        """Pick a move at a skill level matching the player's ELO.
+
+        *remaining_time* is forwarded to the inner :class:`StockfishBot` so
+        that think-time is capped when the clock is running low.
+        """
         bot = self._sync_bot()
         if bot is None:
             return None
-        return bot.choose_move(board)
+        return bot.choose_move(board, remaining_time=remaining_time)
 
     # -- Lifecycle ---------------------------------------------------------
 

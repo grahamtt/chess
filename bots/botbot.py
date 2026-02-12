@@ -5,6 +5,10 @@ Uses: mate-in-one, winning/safe captures, checks, then best position by evaluati
 
 For antichess boards the strategy is simplified to one-ply greedy with the
 antichess evaluator (no checkmate / check logic applies).
+
+When *remaining_time* is low the bot skips expensive analysis (hang-detection,
+one-ply scoring of every legal move) and falls back to fast heuristics so it
+does not flag on time.
 """
 
 import random
@@ -85,7 +89,15 @@ class BotBot:
     """
     Strategy: (1) Mate in one, (2) Winning/safe captures, (3) Checks, (4) One-ply best position.
     Avoids moves that hang a piece when a safe alternative exists.
+
+    Under severe time pressure (< 1 s) the bot skips the expensive
+    hang-detection pass and mate search, instead falling back to a fast
+    capture-or-random heuristic so it never flags on time.
     """
+
+    # Time thresholds (seconds) for progressively degrading search quality.
+    _CRITICAL_TIME = 1.0  # Skip hang detection + mate search
+    _LOW_TIME = 3.0  # Skip hang detection only
 
     def __init__(self, randomness: float = 0.5, random_seed: int | None = None) -> None:
         """
@@ -100,7 +112,11 @@ class BotBot:
         self._rng = random.Random(random_seed) if random_seed is not None else random
         self.name = "BotBot"
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
         legal = list(board.legal_moves)
         if not legal:
             return None
@@ -108,6 +124,12 @@ class BotBot:
         # --- Antichess: use one-ply greedy with the antichess evaluator ---
         if isinstance(board, chess.variant.AntichessBoard):
             return self._choose_move_antichess(board, legal)
+
+        # --- Critical time: fast fallback (capture > check > random) ---
+        if remaining_time is not None and remaining_time < self._CRITICAL_TIME:
+            return self._choose_move_fast(board, legal)
+
+        skip_hang_check = remaining_time is not None and remaining_time < self._LOW_TIME
 
         # 1) Mate in one
         for move in legal:
@@ -131,27 +153,48 @@ class BotBot:
 
         # 3) Moves that give check (tactical pressure)
         checks = [m for m in legal if board.gives_check(m)]
-        safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
-        if safe_checks:
-            # Score all safe checks and use weighted selection
-            scored_checks = []
-            for move in safe_checks:
-                board.push(move)
-                score = -evaluate(board)  # opponent's perspective -> ours
-                board.pop()
-                scored_checks.append((score, move))
-            return weighted_random_choice(scored_checks, self.randomness, self._rng)
-        if checks:
-            # All checks hang something; still prefer checks that hang less
-            scored_checks = []
-            for move in checks:
+        if skip_hang_check:
+            # Under time pressure: skip the expensive hang-detection
+            if checks:
+                scored_checks = []
+                for move in checks:
+                    board.push(move)
+                    score = -evaluate(board)
+                    board.pop()
+                    scored_checks.append((score, move))
+                return weighted_random_choice(scored_checks, self.randomness, self._rng)
+        else:
+            safe_checks = [m for m in checks if not _move_hangs_piece(board, m)]
+            if safe_checks:
+                # Score all safe checks and use weighted selection
+                scored_checks = []
+                for move in safe_checks:
+                    board.push(move)
+                    score = -evaluate(board)  # opponent's perspective -> ours
+                    board.pop()
+                    scored_checks.append((score, move))
+                return weighted_random_choice(scored_checks, self.randomness, self._rng)
+            if checks:
+                # All checks hang something; still prefer checks that hang less
+                scored_checks = []
+                for move in checks:
+                    board.push(move)
+                    score = -evaluate(board)
+                    board.pop()
+                    scored_checks.append((score, move))
+                return weighted_random_choice(scored_checks, self.randomness, self._rng)
+
+        # 4) One-ply greedy: pick move that gives best evaluation after our move
+        if skip_hang_check:
+            # Time-pressured: evaluate all moves without hang detection
+            scored_moves: list[tuple[float, chess.Move]] = []
+            for move in legal:
                 board.push(move)
                 score = -evaluate(board)
                 board.pop()
-                scored_checks.append((score, move))
-            return weighted_random_choice(scored_checks, self.randomness, self._rng)
+                scored_moves.append((score, move))
+            return weighted_random_choice(scored_moves, self.randomness, self._rng)
 
-        # 4) One-ply greedy: pick move that gives best evaluation after our move
         # Filter out moves that hang a piece if we have a safe alternative
         scored = []
         for move in legal:
@@ -172,6 +215,39 @@ class BotBot:
         else:
             # Only unsafe moves available, use weighted selection
             return weighted_random_choice(unsafe_moves, self.randomness, self._rng)
+
+    def _choose_move_fast(
+        self, board: chess.Board, legal: list[chess.Move]
+    ) -> chess.Move:
+        """Ultra-fast fallback for critical time pressure.
+
+        Priority: winning capture > any capture > check > random.
+        No evaluation, no hang-detection — just quick heuristics.
+        """
+        # Winning captures (captured piece value >= our piece value)
+        winning_captures: list[tuple[float, chess.Move]] = []
+        other_captures: list[tuple[float, chess.Move]] = []
+        for move in legal:
+            if board.is_capture(move):
+                ex = _exchange_result(board, move)
+                if ex is not None and ex >= 0:
+                    winning_captures.append((float(ex), move))
+                else:
+                    other_captures.append((0.0, move))
+        if winning_captures:
+            return weighted_random_choice(winning_captures, self.randomness, self._rng)
+        if other_captures:
+            return weighted_random_choice(other_captures, self.randomness, self._rng)
+
+        # Checks
+        checks = [(1.0, m) for m in legal if board.gives_check(m)]
+        if checks:
+            return weighted_random_choice(checks, self.randomness, self._rng)
+
+        # Random legal move
+        if isinstance(self._rng, random.Random):
+            return self._rng.choice(legal)
+        return self._rng.choice(legal)
 
     def _choose_move_antichess(
         self, board: chess.Board, legal: list[chess.Move]

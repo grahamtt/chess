@@ -4,14 +4,25 @@ Uses material + positional scoring (center control, mobility, piece-square).
 
 For antichess (losing chess) the evaluation is inverted: fewer own pieces is
 better and the goal is to lose all material or be stalemated.
+
+When a game clock is active the bot uses **iterative deepening**: it searches
+at depth 1, 2, … up to the configured maximum, checking a deadline before
+each deeper iteration.  Inside the search a ``SearchTimeout`` exception is
+raised when time runs out, causing the bot to fall back to the deepest
+completed result.
 """
 
 import random
+import time as _time
 
 import chess
 import chess.variant
 
-from bots.base import weighted_random_choice
+from bots.base import compute_move_time_budget, weighted_random_choice
+
+
+class SearchTimeout(Exception):
+    """Raised inside negamax when the search deadline has been exceeded."""
 
 
 def _is_antichess(board: chess.Board) -> bool:
@@ -241,6 +252,8 @@ def negamax(
     beta: int,
     randomness: float = 0.0,
     rng: random.Random | None = None,
+    deadline: float | None = None,
+    _nodes: list[int] | None = None,
 ) -> tuple[int, chess.Move | None]:
     """
     Negamax with alpha-beta pruning. Returns (score, best_move).
@@ -249,7 +262,23 @@ def negamax(
     Args:
         randomness: If > 0 and multiple moves have the same best score, randomly choose among them.
         rng: Random number generator to use (for deterministic tests).
+        deadline: Monotonic-clock timestamp after which the search should abort.
+            When exceeded a :class:`SearchTimeout` is raised so the caller can
+            fall back to a shallower result.
+        _nodes: Internal counter (single-element list) used to amortise the
+            deadline check.  Callers should not pass this.
+
+    Raises:
+        SearchTimeout: When *deadline* is not ``None`` and time has expired.
     """
+    # --- deadline check (amortised: every 256 nodes) ---
+    if deadline is not None:
+        if _nodes is None:
+            _nodes = [0]
+        _nodes[0] += 1
+        if _nodes[0] & 0xFF == 0 and _time.monotonic() > deadline:
+            raise SearchTimeout
+
     if depth == 0 or board.is_game_over():
         return evaluate(board), None
 
@@ -258,7 +287,9 @@ def negamax(
 
     for move in board.legal_moves:
         board.push(move)
-        child_score, _ = negamax(board, depth - 1, -beta, -alpha, randomness, rng)
+        child_score, _ = negamax(
+            board, depth - 1, -beta, -alpha, randomness, rng, deadline, _nodes
+        )
         board.pop()
         score = -child_score  # our score from this move
 
@@ -277,7 +308,22 @@ def negamax(
 
 
 class MinimaxBot:
-    """Minimax bot with configurable search depth (alpha-beta pruning)."""
+    """Minimax bot with configurable search depth (alpha-beta pruning).
+
+    When *remaining_time* is passed to :meth:`choose_move`, the bot uses
+    **iterative deepening**: it searches at depth 1, 2, …, up to the
+    configured maximum, checking a time deadline between iterations.  If time
+    runs out *during* a search, the :class:`SearchTimeout` exception causes
+    the bot to fall back to the deepest completed result.  This guarantees that
+    the bot always has *some* answer ready, even under extreme time pressure.
+
+    When the remaining time is very low (< 1 s) the maximum depth is clamped
+    to 1 so the bot plays an instant move rather than risking a flag.
+    """
+
+    # Depth caps applied when the remaining clock is critically low.
+    _LOW_TIME_DEPTH_CAP = 1  # remaining_time < 1 s
+    _MED_TIME_DEPTH_CAP = 2  # remaining_time < 5 s
 
     def __init__(
         self, depth: int = 3, randomness: float = 0.3, random_seed: int | None = None
@@ -298,28 +344,97 @@ class MinimaxBot:
         self._rng = random.Random(random_seed) if random_seed is not None else random
         self.name = f"Minimax (depth {depth})"
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _effective_depth(self, remaining_time: float | None) -> int:
+        """Return the maximum search depth clamped by remaining time."""
+        if remaining_time is None:
+            return self.depth
+        if remaining_time < 1.0:
+            return min(self.depth, self._LOW_TIME_DEPTH_CAP)
+        if remaining_time < 5.0:
+            return min(self.depth, self._MED_TIME_DEPTH_CAP)
+        return self.depth
+
+    def _search_deterministic(
+        self,
+        board: chess.Board,
+        max_depth: int,
+        deadline: float | None,
+    ) -> chess.Move | None:
+        """Deterministic search with iterative deepening."""
+        best_move: chess.Move | None = None
+        for d in range(1, max_depth + 1):
+            # Check deadline before starting a deeper iteration
+            if deadline is not None and _time.monotonic() > deadline:
+                break
+            try:
+                _, move = negamax(
+                    board.copy(), d, -1_000_000, 1_000_000, 0.0, None, deadline
+                )
+                if move is not None:
+                    best_move = move
+            except SearchTimeout:
+                break
+        return best_move
+
+    def _search_with_randomness(
+        self,
+        board: chess.Board,
+        legal: list[chess.Move],
+        max_depth: int,
+        deadline: float | None,
+    ) -> chess.Move | None:
+        """Scored search with iterative deepening and weighted random choice."""
+        best_scored: list[tuple[float, chess.Move]] | None = None
+        for d in range(1, max_depth + 1):
+            if deadline is not None and _time.monotonic() > deadline:
+                break
+            try:
+                scored_moves: list[tuple[float, chess.Move]] = []
+                for move in legal:
+                    test_board = board.copy()
+                    test_board.push(move)
+                    score, _ = negamax(
+                        test_board,
+                        d - 1,
+                        -1_000_000,
+                        1_000_000,
+                        0.0,
+                        None,
+                        deadline,
+                    )
+                    scored_moves.append((-score, move))
+                best_scored = scored_moves
+            except SearchTimeout:
+                break
+        if best_scored:
+            return weighted_random_choice(best_scored, self.randomness, self._rng)
+        return None
+
+    # ------------------------------------------------------------------
+    # ChessBot protocol
+    # ------------------------------------------------------------------
+
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
         legal = list(board.legal_moves)
         if not legal:
             return None
 
+        max_depth = self._effective_depth(remaining_time)
+
+        # Compute a deadline from the time budget
+        budget = compute_move_time_budget(remaining_time)
+        deadline: float | None = None
+        if budget is not None:
+            deadline = _time.monotonic() + budget
+
         if self.randomness == 0.0:
-            # Deterministic: use original negamax
-            _, best = negamax(
-                board.copy(), self.depth, -1_000_000, 1_000_000, 0.0, None
-            )
-            return best
-
-        # Collect scores for all moves using negamax
-        scored_moves = []
-        for move in legal:
-            test_board = board.copy()
-            test_board.push(move)
-            score, _ = negamax(
-                test_board, self.depth - 1, -1_000_000, 1_000_000, 0.0, None
-            )
-            # Negate because negamax returns score from opponent's perspective
-            scored_moves.append((-score, move))
-
-        # Use weighted selection based on scores
-        return weighted_random_choice(scored_moves, self.randomness, self._rng)
+            return self._search_deterministic(board, max_depth, deadline)
+        return self._search_with_randomness(board, legal, max_depth, deadline)

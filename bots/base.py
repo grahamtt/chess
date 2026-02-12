@@ -1,6 +1,10 @@
 """
 Pluggable API for chess bots.
 Bots receive a copy of the board and return a legal move (or None to resign).
+
+When a game clock is active the caller passes ``remaining_time`` (seconds left
+for the bot's side) so bots can dynamically reduce search effort under time
+pressure.
 """
 
 import math
@@ -8,6 +12,58 @@ import random
 from typing import Protocol
 
 import chess
+
+# ---------------------------------------------------------------------------
+# Time-budget helper
+# ---------------------------------------------------------------------------
+
+# Fraction of remaining time to allocate for a single move.
+# Assumes an average of ~40 more moves to play.
+DEFAULT_TIME_FRACTION = 1 / 40
+
+# Absolute minimum time budget (seconds) — prevents bots from having zero
+# time and failing to produce a move.
+MIN_TIME_BUDGET = 0.05
+
+
+def compute_move_time_budget(
+    remaining_time: float | None,
+    *,
+    base_think_time: float | None = None,
+    fraction: float = DEFAULT_TIME_FRACTION,
+    min_budget: float = MIN_TIME_BUDGET,
+) -> float | None:
+    """Derive a per-move time budget from the remaining game-clock time.
+
+    Returns ``None`` when there is no time pressure (unlimited clock).
+
+    Parameters
+    ----------
+    remaining_time:
+        Seconds left on the bot's clock.  ``None`` means unlimited.
+    base_think_time:
+        The bot's normal per-move think time (used as an upper cap when the
+        clock is generous).  ``None`` means no cap beyond the fraction-based
+        budget.
+    fraction:
+        Proportion of *remaining_time* to spend on this move.
+    min_budget:
+        Floor value so the bot always has *some* time to search.
+    """
+    if remaining_time is None:
+        return base_think_time  # No clock → use default think time (or None)
+
+    budget = max(remaining_time * fraction, min_budget)
+
+    # Never use more than half the remaining time on a single move
+    budget = min(budget, remaining_time / 2)
+
+    # If the bot has a configured think time, don't exceed it when the clock
+    # is generous (no need to think longer than normal).
+    if base_think_time is not None:
+        budget = min(budget, base_think_time)
+
+    return max(budget, min_budget)
 
 
 def weighted_random_choice(
@@ -82,10 +138,25 @@ class ChessBot(Protocol):
     name: str
     """Display name for the bot."""
 
-    def choose_move(self, board: chess.Board) -> chess.Move | None:
+    def choose_move(
+        self,
+        board: chess.Board,
+        remaining_time: float | None = None,
+    ) -> chess.Move | None:
         """
         Pick a move for the current side to play.
-        board is a copy of the game state; do not mutate it.
-        Return a legal move, or None to resign.
+
+        Parameters
+        ----------
+        board:
+            A copy of the game state; do not mutate it.
+        remaining_time:
+            Seconds remaining on this bot's clock, or ``None`` when the game
+            has no time control.  Bots should use this to reduce search effort
+            when time is running low.
+
+        Returns
+        -------
+        A legal move, or ``None`` to resign.
         """
         ...
