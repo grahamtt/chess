@@ -105,6 +105,7 @@ def main(page: ft.Page):
 
     # Game clock: each player has fixed time; runs down on their turn
     time_control_secs = None  # Unlimited by default; set by dropdown for next game
+    increment_secs = 0.0  # Seconds added per move (progressive / increment mode)
     white_remaining_secs = 0.0
     black_remaining_secs = 0.0
     move_start_time = time.monotonic()
@@ -339,6 +340,7 @@ def main(page: ft.Page):
             game_mode=game_mode,
             chess960_position=chess960_pos,
             time_control_secs=time_control_secs,
+            increment_secs=increment_secs,
             white_remaining_secs=white_remaining_secs,
             black_remaining_secs=black_remaining_secs,
             clock_enabled=clock_enabled,
@@ -420,7 +422,7 @@ def main(page: ft.Page):
                 pass
 
     def deduct_move_time_and_check_game_over():
-        """Call after a move is applied: deduct elapsed time from the player who moved; end game if they ran out. No-op when clock disabled. Clock does not run until after white's first move."""
+        """Call after a move is applied: deduct elapsed time from the player who moved; end game if they ran out. No-op when clock disabled. Clock does not run until after white's first move. When an increment is configured, adds it to the player whose turn is starting so they can use the extra time immediately."""
         if not clock_enabled:
             update_clock_display()
             return
@@ -441,19 +443,27 @@ def main(page: ft.Page):
         move_start_time = now
         # The player who just moved had their clock running (it was their turn before the move)
         if game.turn == "black":
+            # White just moved
             white_remaining_secs -= elapsed
             if white_remaining_secs <= 0:
                 game_over = True
                 message.current.value = "White ran out of time. Black wins."
                 message.current.color = ft.Colors.BLUE
                 handle_game_over_elo(0.0)  # Black wins
+            elif increment_secs > 0:
+                # Add increment to black (whose turn is starting)
+                black_remaining_secs += increment_secs
         else:
+            # Black just moved
             black_remaining_secs -= elapsed
             if black_remaining_secs <= 0:
                 game_over = True
                 message.current.value = "Black ran out of time. White wins."
                 message.current.color = ft.Colors.BLUE
                 handle_game_over_elo(1.0)  # White wins
+            elif increment_secs > 0:
+                # Add increment to white (whose turn is starting)
+                white_remaining_secs += increment_secs
         update_clock_display()
 
     async def run_clock():
@@ -1732,6 +1742,7 @@ def main(page: ft.Page):
         return not _is_game_in_progress()
 
     config_time_ref = ft.Ref[ft.Dropdown]()
+    config_increment_ref = ft.Ref[ft.Switch]()
     config_white_ref = ft.Ref[ft.Dropdown]()
     config_black_ref = ft.Ref[ft.Dropdown]()
     config_game_mode_ref = ft.Ref[ft.Dropdown]()
@@ -1751,6 +1762,7 @@ def main(page: ft.Page):
             white_player, \
             black_player, \
             time_control_secs, \
+            increment_secs, \
             clock_enabled, \
             clock_started, \
             white_remaining_secs, \
@@ -1826,6 +1838,9 @@ def main(page: ft.Page):
                 move_start_time = time.monotonic()
                 # Clock runs only after white's first move
                 clock_started = game.can_undo()
+        # Apply progressive (increment) toggle
+        if config_increment_ref.current is not None:
+            increment_secs = 2.0 if config_increment_ref.current.value else 0.0
         if config_white_ref.current is not None:
             white_player = config_white_ref.current.value or "human"
         if config_black_ref.current is not None:
@@ -1874,6 +1889,20 @@ def main(page: ft.Page):
                     else str(time_control_secs),
                     width=200,
                     options=time_options,
+                ),
+                ft.Row(
+                    [
+                        ft.Text(
+                            "Progressive (+2 s/move)",
+                            size=14,
+                            weight=ft.FontWeight.W_500,
+                        ),
+                        ft.Switch(
+                            ref=config_increment_ref,
+                            value=increment_secs > 0,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
                 ft.Text("White", size=14, weight=ft.FontWeight.W_500),
                 ft.Dropdown(
@@ -1930,6 +1959,9 @@ def main(page: ft.Page):
                 "unlimited" if time_control_secs is None else str(time_control_secs)
             )
             config_time_ref.current.update()
+        if config_increment_ref.current is not None:
+            config_increment_ref.current.value = increment_secs > 0
+            config_increment_ref.current.update()
         # Update player options based on current game mode
         current_options = _get_player_options_for_mode(game_mode)
         in_progress = _is_game_in_progress()
@@ -3308,6 +3340,7 @@ def main(page: ft.Page):
             white_player = _saved.white_player
             black_player = _saved.black_player
             time_control_secs = _saved.time_control_secs
+            increment_secs = _saved.increment_secs
             white_remaining_secs = _saved.white_remaining_secs
             black_remaining_secs = _saved.black_remaining_secs
             clock_enabled = _saved.clock_enabled
