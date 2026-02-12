@@ -395,13 +395,18 @@ def main(page: ft.Page):
                 except RuntimeError:
                     pass
             return
-        now = time.monotonic()
-        if game.turn == "white":
-            white_effective = white_remaining_secs - (now - move_start_time)
+        # When the game is over, show frozen remaining times (no countdown)
+        if game_over:
+            white_effective = white_remaining_secs
             black_effective = black_remaining_secs
         else:
-            white_effective = white_remaining_secs
-            black_effective = black_remaining_secs - (now - move_start_time)
+            now = time.monotonic()
+            if game.turn == "white":
+                white_effective = white_remaining_secs - (now - move_start_time)
+                black_effective = black_remaining_secs
+            else:
+                white_effective = white_remaining_secs
+                black_effective = black_remaining_secs - (now - move_start_time)
         if white_clock_text.current is not None:
             white_clock_text.current.value = format_clock(white_effective)
             white_clock_text.current.weight = (
@@ -1824,20 +1829,29 @@ def main(page: ft.Page):
 
         if config_time_ref.current is not None:
             raw = config_time_ref.current.value or "300"
+            old_time_control = time_control_secs
             if raw == "unlimited":
                 time_control_secs = None
                 clock_enabled = False  # take effect in current game
             else:
                 try:
-                    time_control_secs = int(raw)
+                    new_time_control = int(raw)
                 except (ValueError, TypeError):
-                    time_control_secs = 300
+                    new_time_control = 300
                 clock_enabled = True  # take effect in current game
-                white_remaining_secs = float(time_control_secs)
-                black_remaining_secs = float(time_control_secs)
-                move_start_time = time.monotonic()
-                # Clock runs only after white's first move
-                clock_started = game.can_undo()
+                if old_time_control is None:
+                    # Switching from unlimited to timed: set full time
+                    white_remaining_secs = float(new_time_control)
+                    black_remaining_secs = float(new_time_control)
+                    move_start_time = time.monotonic()
+                    clock_started = game.can_undo()
+                elif new_time_control != old_time_control:
+                    # Time control changed: add/subtract the difference
+                    diff = float(new_time_control - old_time_control)
+                    white_remaining_secs = max(1.0, white_remaining_secs + diff)
+                    black_remaining_secs = max(1.0, black_remaining_secs + diff)
+                # else: time control unchanged — leave clocks as-is
+                time_control_secs = new_time_control
         # Apply progressive (increment) toggle
         if config_increment_ref.current is not None:
             increment_secs = 2.0 if config_increment_ref.current.value else 0.0
