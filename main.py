@@ -1234,7 +1234,7 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        padding=ft.Padding.symmetric(12, 16),
+        padding=ft.Padding.symmetric(vertical=12, horizontal=16),
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
     )
 
