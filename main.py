@@ -629,8 +629,13 @@ def main(page: ft.Page):
                 execute_human_move(selected[0], selected[1], row, col, animate=True)
                 return
             if selected is not None:
+                was_selected = selected
                 selected = None
                 valid_moves = []
+                # If re-clicking the same piece, just deselect it
+                if was_selected == (row, col):
+                    refresh_board()
+                    return
             if cell is not None and cell[0] == game.turn:
                 selected = (row, col)
                 valid_moves = game.legal_moves_from(row, col)
